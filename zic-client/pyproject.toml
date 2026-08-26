@@ -1,0 +1,32 @@
+[project]
+name = "zic-client"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "appdirs>=1.4.4",
+    "pydantic>=2.13.4",
+    "pyside6>=6.11.2",
+    "toml>=0.10.2",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[project.scripts]
+zic = "zic.main:main"
+
+[tool.setuptools.package-data]
+picsou_client = [
+    "resources/**/*",
+]
+
+[tool.setuptools.exclude-package-data]
+"*" = [
+    "*.pyc",
+]
