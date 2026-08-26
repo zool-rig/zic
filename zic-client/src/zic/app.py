@@ -4,14 +4,32 @@ from PySide6.QtWidgets import *
 from PySide6.QtCore import *
 from PySide6.QtGui import *
 
+from zic.utils.qt_utils import make_toolbutton
+
 
 class ZicUI(QDialog):
     def __init__(self) -> None:
         super().__init__()
 
         # Layouts
+        self.main_v_layout = None
+        self.main_h_layout = None
+        self.side_bar_v_layout = None
+        self.random_btn_h_layout = None
+        self.filter_tab_v_layout = None
 
         # Widgets
+        self.play_random_btn = None
+        self.filter_tab_frame = None
+        self.toggle_artists_btn = None
+        self.toggle_genres_btn = None
+        self.h_splitter = None
+        self.filter_stacked_widget = None
+        self.artist_filter_widget = None
+        self.genre_filter_widget = None
+        self.album_explorer = None
+        self.album_view = None
+        self.player_widget = None
 
         self.init_ui()
 
@@ -28,10 +46,17 @@ class ZicUI(QDialog):
         # timer.start(1000)
 
     def init_layouts(self) -> None:
-        pass
+        self.main_v_layout = QVBoxLayout(self)
+        self.main_h_layout = QHBoxLayout()
+        self.side_bar_v_layout = QVBoxLayout()
+        self.random_btn_h_layout = QHBoxLayout()
+        self.filter_tab_v_layout = QVBoxLayout()
 
     def init_widgets(self) -> None:
-        pass
+        self.play_random_btn = make_toolbutton("icons/shuffle.png", tooltip="Play random")
+        self.filter_tab_frame = QFrame()
+        self.toggle_artists_btn = make_toolbutton("icons/artist.png", tooltip="Toggle artists view", checkable=True)
+        self.toggle_artists_btn = make_toolbutton("icons/tag.png", tooltip="Toggle genres view", checkable=True)
 
     def set_layout(self) -> None:
         pass
