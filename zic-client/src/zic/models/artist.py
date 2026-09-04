@@ -1,7 +1,8 @@
-from pydantic import BaseModel
+from dataclasses import dataclass
 
 
-class Artist(BaseModel):
+@dataclass(slots=True)
+class Artist:
     id: int
     name: str
     normalized_name: str

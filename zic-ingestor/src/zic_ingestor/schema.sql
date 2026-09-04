@@ -131,7 +131,6 @@ CREATE TABLE song_artists (
 
 -- Useful indexes for frequent lookups/joins
 CREATE INDEX idx_songs_album_id ON songs(album_id);
-CREATE INDEX idx_songs_content_hash ON songs(content_hash);
 CREATE INDEX idx_albums_artist_id ON albums(artist_id);
 CREATE INDEX idx_song_artists_artist_id ON song_artists(artist_id);
 CREATE INDEX idx_album_genres_genre_id ON album_genres(genre_id);

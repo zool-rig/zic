@@ -1,14 +1,29 @@
-from pydantic import BaseModel
+from dataclasses import dataclass, field
+from typing import NamedTuple
 
 from zic.models.artist import Artist
 from zic.models.genre import Genre
 
 
-class Album(BaseModel):
+class AlbumCover(NamedTuple):
+    thumbnail: bytes
+    dominant_color: str | None
+
+
+@dataclass(slots=True)
+class Album:
     id: int
     name: str
     year: int
-    row_date: str
-    artist: Artist
+    raw_date: str
+    _artist_id: int = field(repr=False, compare=False)
+    _artist_name: str = field(repr=False, compare=False)
+    _artist_normalized_name: str = field(repr=False, compare=False)
+    artist: Artist = field(init=False)
     is_compilation: bool
     genres: list[Genre]
+
+    def __post_init__(self) -> None:
+        self.artist = Artist(
+            self._artist_id, self._artist_name, self._artist_normalized_name
+        )

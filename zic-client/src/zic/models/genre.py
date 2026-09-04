@@ -1,7 +1,14 @@
-from pydantic import BaseModel
+import json
+
+from dataclasses import dataclass, field
 
 
-class Genre(BaseModel):
+@dataclass(slots=True)
+class Genre:
     id: int
     name: str
-    position: list[float]
+    _raw_position: str = field(repr=False, compare=False)
+    position: list[float] = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.position: list[float] = json.loads(self._raw_position)
