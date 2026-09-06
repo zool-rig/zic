@@ -45,7 +45,9 @@ class Song:
             try:
                 self.file_modified_at = datetime.fromisoformat(self.file_modified_at)
             except ValueError:
-                self.file_modified_at = datetime.fromtimestamp(float(self.file_modified_at))
+                self.file_modified_at = datetime.fromtimestamp(
+                    float(self.file_modified_at)
+                )
         if isinstance(self.imported_at, str):
             self.imported_at = datetime.fromisoformat(self.imported_at)
 

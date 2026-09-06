@@ -31,3 +31,7 @@ class GenresFilterWidget(FilterListWidget):
         self.filled = True
 
         super().fill()
+
+    def on_list_selection_changed(self) -> None:
+        items = super().on_list_selection_changed()
+        self.app.album_explorer.set_genre_filters([item.genre for item in items])

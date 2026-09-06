@@ -2,7 +2,7 @@ from PySide6.QtWidgets import *
 from PySide6.QtCore import *
 from PySide6.QtGui import *
 
-from zic.utils.qt_utils import make_toolbutton
+from zic.utils.qt_utils import make_toolbutton, set_label_font_size
 from zic.resources import get_resource
 from zic.config import get_user_config
 
@@ -59,13 +59,20 @@ class FilterListWidget(QWidget):
     def set_connections(self) -> None:
         self.search_edt.editingFinished.connect(self.filter)
         self.sort_btn.toggled.connect(self.set_descending_order)
+        self.list_widget.itemSelectionChanged.connect(self.on_list_selection_changed)
+        self.list_widget.customContextMenuRequested.connect(self.show_context_menu)
 
     def set_default(self) -> None:
         self.main_v_layout.setAlignment(Qt.AlignTop)
         self.search_edt.setClearButtonEnabled(True)
         self.search_edt.setPlaceholderText("🔍 Search...")
         self.list_widget.setSortingEnabled(True)
-        self.set_descending_order(getattr(get_user_config(), self.SORT_ORDER_CONFIG_KEY))
+        self.set_descending_order(
+            getattr(get_user_config(), self.SORT_ORDER_CONFIG_KEY)
+        )
+        self.list_widget.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+        set_label_font_size(self.title_lbl, 12)
 
     def fill(self) -> None:
         self.title_lbl.setText(f"{self.list_widget.count()} - {self.title}")
@@ -92,3 +99,15 @@ class FilterListWidget(QWidget):
     def clear(self) -> None:
         self.filled = False
         self.list_widget.clear()
+
+    def on_list_selection_changed(self) -> None:
+        return self.list_widget.selectedItems()
+
+    def show_context_menu(self) -> None:
+        menu = QMenu(self)
+
+        menu.addAction("Clear selection").triggered.connect(
+            self.list_widget.clearSelection
+        )
+
+        menu.exec(QCursor.pos())

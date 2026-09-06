@@ -86,8 +86,12 @@ class SongInfoWidget(QWidget):
         else:
             self.cover_image.clear()
         self.set_label_text(self.song_title_lbl, f"🎵 : {song.title if song else '-'}")
-        self.set_label_text(self.album_title_lbl, f"💿 : {song.album.name if song else '-'}")
-        self.set_label_text(self.artist_name_lbl, f"🎤 : {song.artist_credit if song else '-'}")
+        self.set_label_text(
+            self.album_title_lbl, f"💿 : {song.album.name if song else '-'}"
+        )
+        self.set_label_text(
+            self.artist_name_lbl, f"🎤 : {song.artist_credit if song else '-'}"
+        )
 
 
 class LikesWidget(QWidget):
@@ -199,7 +203,9 @@ class PlaybackWidget(QWidget):
 
     def init_widgets(self) -> None:
         self.previous_btn = make_toolbutton("icons/previous.png", tooltip="Previous")
-        self.play_btn = make_toolbutton("icons/play.png", tooltip="Previous", checkable=True)
+        self.play_btn = make_toolbutton(
+            "icons/play.png", tooltip="Previous", checkable=True
+        )
         self.next_btn = make_toolbutton("icons/next.png", tooltip="Previous")
         self.current_time_lbl = QLabel("00:00")
         self.time_slider = QSlider(Qt.Horizontal)
@@ -352,7 +358,8 @@ class VolumeSlider(QWidget):
     def init_widgets(self) -> None:
         self.mute_btn = make_toolbutton(
             "icons/mute.png" if get_user_config().muted else "icons/volume.png",
-            tooltip="Mute", checkable=True
+            tooltip="Mute",
+            checkable=True,
         )
         self.slider = QSlider(Qt.Horizontal)
 
@@ -430,7 +437,9 @@ class PlayerWidget(QWidget):
         self.main_h_layout.addWidget(self.volume_slider)
 
     def set_connections(self) -> None:
-        self.volume_slider.volume_changed.connect(lambda v: self.audio_output.setVolume(v / 100))
+        self.volume_slider.volume_changed.connect(
+            lambda v: self.audio_output.setVolume(v / 100)
+        )
         self.volume_slider.muted.connect(self.audio_output.setMuted)
         self.playback_widget.song_finished.connect(self.on_song_finished)
         self.playback_widget.song_finished.connect(self.next)

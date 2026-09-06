@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 from appdirs import user_data_dir, user_config_dir
 from pathlib import Path
+from enum import Enum
 
 
 LOGGER = logging.getLogger("ZIC - Config")
@@ -15,6 +16,14 @@ USER_CONFIG_PATH = Path(user_data_dir("Zic")) / "user_config.json"
 
 class ConfigNotFoundError(BaseException):
     pass
+
+
+class ConfigEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Enum):
+            return obj.value
+        else:
+            return super().default(obj)
 
 
 @dataclass(frozen=True)
@@ -31,6 +40,18 @@ class AppConfig:
         LOGGER.debug(f"App config loaded  : {APP_CONFIG_PATH}")
         return config
 
+    def serialize(self) -> dict[str, str]:
+        return {
+            "db_path": str(self.db_path),
+            "root_dir": str(self.root_dir),
+        }
+
+    def dump(self) -> None:
+        os.makedirs(APP_CONFIG_PATH.parent, exist_ok=True)
+        with APP_CONFIG_PATH.open("w") as f:
+            toml.dump(self.serialize(), f)
+        LOGGER.debug(f"App config saved  : {APP_CONFIG_PATH}")
+
 
 @dataclass
 class UserConfig:
@@ -38,6 +59,8 @@ class UserConfig:
     genres_descending_order: bool = False
     volume: int = 50
     muted: bool = False
+    explorer_sort_order: int = 1
+    explorer_sorting_mode: int = 1
 
     @classmethod
     def default(cls) -> "UserConfig":
@@ -47,9 +70,11 @@ class UserConfig:
     def load(cls) -> "UserConfig":
         if not USER_CONFIG_PATH.exists():
             config = cls.default()
-            LOGGER.debug(f"User config path not found : {USER_CONFIG_PATH}, fallback to default")
+            LOGGER.debug(
+                f"User config path not found : {USER_CONFIG_PATH}, fallback to default"
+            )
             return config
-        
+
         with USER_CONFIG_PATH.open("r") as f:
             config = cls(**json.load(f))
         LOGGER.debug(f"User config loaded : {USER_CONFIG_PATH}")
@@ -59,7 +84,8 @@ class UserConfig:
         if not USER_CONFIG_PATH.parent.exists():
             os.makedirs(USER_CONFIG_PATH.parent)
         with USER_CONFIG_PATH.open("w") as f:
-            json.dump(self.__dict__, f, indent=4)
+            json.dump(self.__dict__, f, indent=4, cls=ConfigEncoder)
+        LOGGER.debug(f"user config loaded  : {USER_CONFIG_PATH}")
 
 
 APP_CONFIG: AppConfig | None = None
@@ -69,6 +95,7 @@ USER_CONFIG: UserConfig | None = None
 def get_app_config() -> AppConfig:
     global APP_CONFIG
     if APP_CONFIG is None:
+        LOGGER.debug(f"App config path : {APP_CONFIG_PATH}")
         APP_CONFIG = AppConfig.load()
     return APP_CONFIG
 
@@ -76,5 +103,10 @@ def get_app_config() -> AppConfig:
 def get_user_config() -> UserConfig:
     global USER_CONFIG
     if USER_CONFIG is None:
+        LOGGER.debug(f"User config path : {USER_CONFIG_PATH}")
         USER_CONFIG = UserConfig.load()
     return USER_CONFIG
+
+
+def app_config_exists() -> bool:
+    return APP_CONFIG_PATH.exists()

@@ -1,4 +1,5 @@
 import sqlite3
+import os
 
 from typing import TypeAlias, Callable, Any
 
@@ -19,3 +20,20 @@ class RowFactory:
 
     def __exit__(self, exc_type, exc, tb):
         self.conn.row_factory = self.current_factory
+
+
+def is_valid_sqlite_file(db_path: os.PathLike) -> bool:
+    if not os.path.exists(db_path):
+        return False
+
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+
+    try:
+        cur.execute("PRAGMA integrity_check")
+
+        return True
+    except sqlite3.DatabaseError:
+        return False
+    finally:
+        conn.close()

@@ -6,12 +6,14 @@ from PySide6.QtGui import *
 
 from zic.api import ZicApi
 from zic.config import get_user_config
-from zic.utils.qt_utils import make_toolbutton
+from zic.utils.qt_utils import make_toolbutton, SignalsOFF
 from zic.widgets.rules import VRule, HRule
 from zic.widgets.artists_filter_widget import ArtistsFilterWidget
 from zic.widgets.genres_filter_widget import GenresFilterWidget
 from zic.widgets.album_explorer import AlbumExplorer
 from zic.widgets.player_widget import PlayerWidget
+from zic.models.album import Album, AlbumCover
+from zic.widgets.album_view import AlbumView
 
 
 class ZicUI(QDialog):
@@ -67,9 +69,7 @@ class ZicUI(QDialog):
         self.play_random_btn = make_toolbutton(
             "icons/shuffle.png", tooltip="Play random"
         )
-        self.reload_btn = make_toolbutton(
-            "icons/refresh-arrow.png", tooltip="Reload"
-        )
+        self.reload_btn = make_toolbutton("icons/refresh-arrow.png", tooltip="Reload")
         self.filter_tab_frame = QFrame()
         self.toggle_artists_btn = make_toolbutton(
             "icons/artist.png", tooltip="Toggle artists view", checkable=True
@@ -81,9 +81,9 @@ class ZicUI(QDialog):
         self.filter_stacked_widget = QStackedWidget()
         self.artist_filter_widget = ArtistsFilterWidget(self)
         self.genre_filter_widget = GenresFilterWidget(self)
-        self.album_explorer = AlbumExplorer(self)
-        self.album_view = None  # TODO
-        self.player_widget = PlayerWidget(self)
+        self.album_explorer = AlbumExplorer(self)  # TODO replace by api if possible
+        self.album_view = AlbumView(self.api)
+        self.player_widget = PlayerWidget(self)  # TODO replace by api if possible
 
     def set_layout(self) -> None:
         self.main_v_layout.addLayout(self.main_h_layout)
@@ -102,6 +102,7 @@ class ZicUI(QDialog):
         self.filter_stacked_widget.addWidget(self.artist_filter_widget)
         self.filter_stacked_widget.addWidget(self.genre_filter_widget)
         self.h_splitter.addWidget(self.album_explorer)
+        self.h_splitter.addWidget(self.album_view)
         self.main_v_layout.addWidget(HRule(), Qt.AlignBottom)
         self.main_v_layout.addWidget(self.player_widget)
 
@@ -114,6 +115,7 @@ class ZicUI(QDialog):
         )
         self.play_random_btn.clicked.connect(self.on_play_random_btn_clicked)
         self.reload_btn.clicked.connect(self.reload)
+        self.album_explorer.album_selected.connect(self.on_album_selected)
 
     def set_default(self) -> None:
         self.setWindowFlags(Qt.Window)
@@ -129,6 +131,10 @@ class ZicUI(QDialog):
             layout.setAlignment(alignment)
 
         self.filter_stacked_widget.hide()
+        self.album_view.hide()
+        self.h_splitter.setStretchFactor(0, 1)
+        self.h_splitter.setStretchFactor(1, 3)
+        self.h_splitter.setStretchFactor(1, 1)
 
     def set_style_sheet(self) -> None:
         pass
@@ -147,6 +153,14 @@ class ZicUI(QDialog):
             other_button.setChecked(False)
             self.filter_stacked_widget.show()
             self.filter_stacked_widget.setCurrentIndex(index)
+            with SignalsOFF(
+                self.artist_filter_widget.list_widget,
+                self.genre_filter_widget.list_widget,
+            ):
+                if other_button == self.toggle_artists_btn:
+                    self.artist_filter_widget.list_widget.clearSelection()
+                else:
+                    self.genre_filter_widget.list_widget.clearSelection()
         else:
             self.filter_stacked_widget.hide()
 
@@ -159,3 +173,7 @@ class ZicUI(QDialog):
         self.api.invalidate_caches()
         self.artist_filter_widget.clear()
         self.genre_filter_widget.clear()
+
+    def on_album_selected(self, album: Album, cover: AlbumCover | None) -> None:
+        self.album_view.show()
+        self.album_view.set_album(album, cover)

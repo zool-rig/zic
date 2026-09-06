@@ -3,6 +3,7 @@ import logging
 import time
 
 from collections import defaultdict
+from typing import Any
 
 from zic.models.artist import Artist
 from zic.models.genre import Genre
@@ -46,7 +47,9 @@ class ZicApi:
         start_time = time.perf_counter()
         cur = self.connection.execute("SELECT id, name, normalized_name FROM artists;")
         self._artists_cache = [Artist(*row) for row in cur.fetchall()]
-        LOGGER.debug(f"{len(self._artists_cache)} artists fetched in {time.perf_counter() - start_time:.3f}s")
+        LOGGER.debug(
+            f"{len(self._artists_cache)} artists fetched in {time.perf_counter() - start_time:.3f}s"
+        )
 
     def invalidate_artists_cache(self) -> None:
         self._artists_cache = None
@@ -60,7 +63,9 @@ class ZicApi:
         start_time = time.perf_counter()
         cur = self.connection.execute("SELECT id, name, position FROM genres;")
         self._genres_cache = [Genre(*row) for row in cur.fetchall()]
-        LOGGER.debug(f"{len(self._genres_cache)} genres fetched in {time.perf_counter() - start_time:.3f}s")
+        LOGGER.debug(
+            f"{len(self._genres_cache)} genres fetched in {time.perf_counter() - start_time:.3f}s"
+        )
 
     def invalidate_genres_cache(self) -> None:
         self._genres_cache = None
@@ -123,7 +128,9 @@ class ZicApi:
                 )
                 self._albums_cache.append(album)
 
-        LOGGER.debug(f"{len(self._albums_cache)} albums fetched in {time.perf_counter() - start_time:.3f}s")
+        LOGGER.debug(
+            f"{len(self._albums_cache)} albums fetched in {time.perf_counter() - start_time:.3f}s"
+        )
 
     def invalidate_albums_cache(self) -> None:
         self._albums_cache = None
@@ -175,15 +182,7 @@ class ZicApi:
             "WHERE hidden = FALSE"
         )
 
-    def fetch_random_songs(self) -> list[Song]:
-        start_time = time.perf_counter()
-        query = self.get_song_query()
-        query.push(f"ORDER BY RANDOM() LIMIT {SONG_CHUNK_LIMIT}")
-
-        with RowFactory(self.connection, sqlite3.Row):
-            cur = self.connection.execute(*query.build())
-            rows = cur.fetchall()
-
+    def get_songs_from_rows(self, rows: list[Any]) -> list[Song]:
         songs: list[Song] = []
 
         for row in rows:
@@ -231,7 +230,22 @@ class ZicApi:
                 )
             )
 
-        LOGGER.debug(f"{len(songs)} random songs fetched in {time.perf_counter() - start_time:.3f}s")
+        return songs
+
+    def fetch_random_songs(self) -> list[Song]:
+        start_time = time.perf_counter()
+        query = self.get_song_query()
+        query.push(f"ORDER BY RANDOM() LIMIT {SONG_CHUNK_LIMIT}")
+
+        with RowFactory(self.connection, sqlite3.Row):
+            cur = self.connection.execute(*query.build())
+            rows = cur.fetchall()
+
+        songs = self.get_songs_from_rows(rows)
+
+        LOGGER.debug(
+            f"{len(songs)} random songs fetched in {time.perf_counter() - start_time:.3f}s"
+        )
         return songs
 
     def get_random_playlist(self) -> Playlist:
@@ -245,7 +259,9 @@ class ZicApi:
         query.push_bind(album.id)
         cur = self.connection.execute(*query.build())
         result = cur.fetchone()
-        LOGGER.debug(f"Album cover thumbnail for (id: {album.id}) fetched in {time.perf_counter() - start_time:.3f}s")
+        LOGGER.debug(
+            f"Album cover thumbnail for (id: {album.id}) fetched in {time.perf_counter() - start_time:.3f}s"
+        )
         return AlbumCover(result[0], result[1]) if result else None
 
     def get_albums_cover_thumbnails(self, albums: list[Album]) -> dict[int, AlbumCover]:
@@ -256,7 +272,9 @@ class ZicApi:
         query.push_binds([album.id for album in albums])
         cur = self.connection.execute(*query.build())
         result = {row[0]: AlbumCover(row[1], row[2]) for row in cur.fetchall()}
-        LOGGER.debug(f"{len(result)} album cover thumbnails fetched in {time.perf_counter() - start_time:.3f}s")
+        LOGGER.debug(
+            f"{len(result)} album cover thumbnails fetched in {time.perf_counter() - start_time:.3f}s"
+        )
         return result
 
     def get_song_path(self, song: Song) -> str:
@@ -287,9 +305,28 @@ class ZicApi:
         query.push(", play_count =")
         query.push_bind(song.play_count)
         query.push(", last_played_at =")
-        query.push_bind(song.last_played_at.isoformat() if song.last_played_at else None)
+        query.push_bind(
+            song.last_played_at.isoformat() if song.last_played_at else None
+        )
         query.push("WHERE songs.id =")
         query.push_bind(song.id)
         self.connection.execute(*query.build())
         self.connection.commit()
         LOGGER.debug(f"Song synchronized : {song}")
+
+    def get_album_songs(self, album: Album) -> list[Song]:
+        start_time = time.perf_counter()
+        query = self.get_song_query()
+        query.push("AND songs.album_id =")
+        query.push_bind(album.id)
+
+        with RowFactory(self.connection, sqlite3.Row):
+            cur = self.connection.execute(*query.build())
+            rows = cur.fetchall()
+
+        songs = self.get_songs_from_rows(rows)
+
+        LOGGER.debug(
+            f"{len(songs)} songs from {album.name} fetched in {time.perf_counter() - start_time:.3f}s"
+        )
+        return songs
