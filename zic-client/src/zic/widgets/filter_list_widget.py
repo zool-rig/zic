@@ -65,6 +65,9 @@ class FilterListWidget(QWidget):
     def set_default(self) -> None:
         self.main_v_layout.setAlignment(Qt.AlignTop)
         self.search_edt.setClearButtonEnabled(True)
+        clear_button = self.search_edt.findChildren(QAction)
+        if clear_button:
+            clear_button[0].triggered.connect(lambda: (self.search_edt.clear(), self.filter(), self.list_widget.clearSelection()))
         self.search_edt.setPlaceholderText("🔍 Search...")
         self.list_widget.setSortingEnabled(True)
         self.set_descending_order(

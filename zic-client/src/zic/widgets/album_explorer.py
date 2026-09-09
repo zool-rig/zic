@@ -531,6 +531,10 @@ class AlbumExplorer(QWidget):
         self.main_v_layout.setAlignment(Qt.AlignTop)
         self.search_edt.setPlaceholderText("🔍 Search...")
         self.search_edt.setClearButtonEnabled(True)
+        clear_button = self.search_edt.findChildren(QAction)
+        if clear_button:
+            clear_button[0].triggered.connect(lambda: (self.search_edt.clear(), self.on_filter_changed()))
+        
         set_label_font_size(self.title_lbl, 12)
 
     def fill(self) -> None:

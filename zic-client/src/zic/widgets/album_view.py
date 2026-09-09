@@ -2,8 +2,6 @@ from PySide6.QtWidgets import *
 from PySide6.QtCore import *
 from PySide6.QtGui import *
 
-from functools import partial
-
 from zic.models.album import Album, AlbumCover
 from zic.models.song import Song
 from zic.utils.qt_utils import make_toolbutton, set_label_font_size
@@ -50,7 +48,7 @@ class SongWidget(QWidget):
         seconds = int(self.song.duration)
         self.duration_lbl = QLabel(f"{seconds // 60:02d}:{seconds % 60:02d}")
         self.artist_credit_lbl = QLabel(self.song.artist_credit)
-        self.info_btn = make_toolbutton("icons/artist.png", tooltip="Info")  # TODO icon
+        self.info_btn = make_toolbutton("icons/info.png", tooltip="Info")
 
     def set_layout(self) -> None:
         self.main_h_layout.addWidget(self.play_btn)
@@ -83,12 +81,14 @@ class AlbumView(QWidget):
 
         # Layouts
         self.main_v_layout = None
+        self.top_h_layout = None
         self.cover_h_layout = None
         self.cover_v_layout = None
         self.buttons_h_layout = None
         self.songs_v_layout = None
 
         # Widgets
+        self.close_btn = None
         self.cover_thumbnail = None
         self.title_lbl = None
         self.artist_lbl = None
@@ -111,13 +111,15 @@ class AlbumView(QWidget):
 
     def init_layouts(self) -> None:
         self.main_v_layout = QVBoxLayout(self)
+        self.top_h_layout = QHBoxLayout()
         self.cover_h_layout = QHBoxLayout()
         self.cover_v_layout = QVBoxLayout()
         self.buttons_h_layout = QHBoxLayout()
         self.songs_v_layout = QVBoxLayout()
 
     def init_widgets(self) -> None:
-        self.cover_thumbnail = CoverThumbnail(width=250, height=250)
+        self.close_btn = make_toolbutton("icons/close.png", tooltip="Close")
+        self.cover_thumbnail = CoverThumbnail(width=200, height=200)
         self.title_lbl = QLabel()
         self.artist_lbl = QLabel()
         self.genres_lbl = QLabel()
@@ -125,11 +127,13 @@ class AlbumView(QWidget):
         self.play_random_btn = make_toolbutton(
             "icons/shuffle.png", tooltip="Play random"
         )
-        self.info_btn = make_toolbutton("icons/artist.png", tooltip="Info")  # TODO icon
+        self.info_btn = make_toolbutton("icons/info.png", tooltip="Info")
         self.scroll_area = QScrollArea()
         self.scroll_area_widget = QWidget()
 
     def set_layout(self) -> None:
+        self.main_v_layout.addLayout(self.top_h_layout)
+        self.top_h_layout.addWidget(self.close_btn)
         self.main_v_layout.addLayout(self.cover_h_layout)
         self.cover_h_layout.addLayout(self.cover_v_layout)
         self.cover_v_layout.addWidget(self.cover_thumbnail)
@@ -145,6 +149,7 @@ class AlbumView(QWidget):
         self.scroll_area_widget.setLayout(self.songs_v_layout)
 
     def set_connections(self) -> None:
+        self.close_btn.clicked.connect(self.hide)
         self.play_btn.clicked.connect(lambda: self.play_album_requested.emit(self.album))
         self.play_random_btn.clicked.connect(lambda: self.shuffle_album_requested.emit(self.album))
 
@@ -158,6 +163,7 @@ class AlbumView(QWidget):
             (self.title_lbl, Qt.AlignCenter),
             (self.artist_lbl, Qt.AlignCenter),
             (self.genres_lbl, Qt.AlignCenter),
+            (self.top_h_layout, Qt.AlignRight),
         ):
             layout.setAlignment(alignment)
 
@@ -177,7 +183,7 @@ class AlbumView(QWidget):
         self.clear_songs()
         for song in self.songs:
             widget = SongWidget(song)
-            widget.play_song_requested.connect(partial(self.play_song_requested.emit, self.album, song))
+            widget.play_song_requested.connect(lambda s=song: self.play_song_requested.emit(self.album, s))
             self.songs_v_layout.addWidget(widget)
             self.song_widgets.append(widget)
 

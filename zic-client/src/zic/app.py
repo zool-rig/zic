@@ -138,7 +138,7 @@ class ZicUI(QDialog):
         self.album_view.hide()
         self.h_splitter.setStretchFactor(0, 1)
         self.h_splitter.setStretchFactor(1, 3)
-        self.h_splitter.setStretchFactor(1, 1)
+        self.h_splitter.setStretchFactor(2, 1)
 
     def set_style_sheet(self) -> None:
         pass
@@ -194,4 +194,6 @@ class ZicUI(QDialog):
         self.player_widget.play()
 
     def play_song(self, album: Album, song: Song) -> None:
-        pass
+        playlist = self.api.get_song_playlist(album, song)
+        self.player_widget.set_playlist(playlist)
+        self.player_widget.play()
