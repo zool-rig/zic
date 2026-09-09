@@ -161,6 +161,8 @@ class LikesWidget(QWidget):
 
 
 class PlaybackWidget(QWidget):
+    song_resumed = Signal()
+    song_paused = Signal()
     song_finished = Signal()
     previous_requested = Signal()
     next_requested = Signal()
@@ -262,6 +264,7 @@ class PlaybackWidget(QWidget):
         self.media_player.play()
         self.progress_timer.start()
         self.playing = True
+        self.song_resumed.emit()
 
     def pause(self) -> None:
         self.play_btn.setChecked(False)
@@ -269,6 +272,7 @@ class PlaybackWidget(QWidget):
         self.media_player.pause()
         self.progress_timer.stop()
         self.playing = False
+        self.song_paused.emit()
 
     def on_play_btn_clicked(self) -> None:
         if self.play_btn.isChecked():
@@ -389,6 +393,8 @@ class VolumeSlider(QWidget):
 
 
 class PlayerWidget(QWidget):
+    song_started = Signal(Song)
+    song_paused = Signal(Song)
     song_finished = Signal(Song)
 
     def __init__(self, app: QWidget) -> None:
@@ -448,6 +454,8 @@ class PlayerWidget(QWidget):
         self.playback_widget.next_requested.connect(self.next)
         self.likes_widget.song_liked.connect(self.on_current_song_liked)
         self.devices.audioOutputsChanged.connect(self.on_audio_outputs_changed)
+        self.playback_widget.song_paused.connect(lambda: self.song_paused.emit(self.current_song))
+        self.playback_widget.song_resumed.connect(lambda: self.song_started.emit(self.current_song))
 
     def on_song_finished(self) -> None:
         if self.current_song is not None:
@@ -486,6 +494,7 @@ class PlayerWidget(QWidget):
         if self.current_play_id is None:
             self.current_play_id = self.app.api.record_song_play(self.current_song)
         self.playback_widget.play()
+        self.song_started.emit(self.current_song)
 
     def mark_current_play_skipped(self) -> None:
         if self.current_play_id is None:

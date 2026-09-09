@@ -120,6 +120,9 @@ class ZicUI(QDialog):
         self.album_view.play_album_requested.connect(self.play_album)
         self.album_view.shuffle_album_requested.connect(self.shuffle_album)
         self.album_view.play_song_requested.connect(self.play_song)
+        self.player_widget.song_started.connect(self.on_song_started)
+        self.player_widget.song_paused.connect(self.on_song_paused)
+        self.player_widget.song_finished.connect(self.on_song_finished)
 
     def set_default(self) -> None:
         self.setWindowFlags(Qt.Window)
@@ -197,3 +200,15 @@ class ZicUI(QDialog):
         playlist = self.api.get_song_playlist(album, song)
         self.player_widget.set_playlist(playlist)
         self.player_widget.play()
+
+    def on_song_started(self, song: Song) -> None:
+        self.album_view.start_playing_song_display(song)
+        self.album_explorer.start_playing_album_display(song.album)
+
+    def on_song_paused(self, _: Song) -> None:
+        self.album_view.stop_current_playing_song_display()
+        self.album_explorer.stop_current_playing_album_display()
+
+    def on_song_finished(self, _: Song) -> None:
+        self.album_view.stop_current_playing_song_display()
+        self.album_explorer.stop_current_playing_album_display()

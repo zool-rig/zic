@@ -17,6 +17,7 @@ from zic.widgets.toggle_switch import ToggleSwitch
 from zic.widgets.strong_menu import StrongMenu
 from zic.config import get_user_config, get_app_config
 from zic.api import ZicApi
+from zic.widgets.sound_wave import SoundWave
 
 
 ALBUM_THUMBNAIL_SIZE = 140
@@ -40,6 +41,7 @@ class AlbumItemWidget(QWidget):
         self.cover_thumbnail = None
         self.title_lbl = None
         self.artist_lbl = None
+        self.sound_wave = None
 
         # Effects
         self.shadow = None
@@ -64,19 +66,21 @@ class AlbumItemWidget(QWidget):
         )
         self.title_lbl = QLabel()
         self.artist_lbl = QLabel()
+        self.sound_wave = SoundWave(bars=20, height=20)
 
     def set_layout(self) -> None:
         self.main_v_layout.addWidget(self.cover_thumbnail, 0, Qt.AlignHCenter)
         self.main_v_layout.addWidget(self.title_lbl)
         self.main_v_layout.addWidget(self.artist_lbl)
+        self.main_v_layout.addWidget(self.sound_wave)
 
     def set_connections(self) -> None:
         pass
 
     def set_default(self) -> None:
-        self.main_v_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_v_layout.setContentsMargins(0, 10, 0, 0)
         self.main_v_layout.setSpacing(4)
-        self.main_v_layout.setAlignment(Qt.AlignTop)
+        self.main_v_layout.setAlignment(Qt.AlignTop | Qt.AlignCenter)
         for label in (self.title_lbl, self.artist_lbl):
             label.setFixedWidth(ALBUM_THUMBNAIL_SIZE)
             label.setWordWrap(False)
@@ -84,6 +88,7 @@ class AlbumItemWidget(QWidget):
         self.set_elided_text(self.title_lbl, self.album.name)
         self.set_elided_text(self.artist_lbl, self.album.artist.name)
         self.init_shadow()
+        self.sound_wave.hide()
 
     def set_elided_text(self, label: QLabel, text: str) -> None:
         label.setToolTip(text)
@@ -112,6 +117,7 @@ class AlbumItemWidget(QWidget):
         was_hovered = self.shadow.isEnabled() if self.shadow else False
         self.init_shadow()
         self.shadow.setEnabled(was_hovered)
+        self.sound_wave.set_color(self.cover.dominant_color)
 
     def enterEvent(self, event: QEvent) -> None:
         self.shadow.setEnabled(True)
@@ -120,6 +126,15 @@ class AlbumItemWidget(QWidget):
     def leaveEvent(self, event: QEvent) -> None:
         self.shadow.setEnabled(False)
         super().leaveEvent(event)
+
+    def set_playing_display(self) -> None:
+        self.sound_wave.show()
+        self.sound_wave.raise_()
+        self.sound_wave.start()
+
+    def stop_playing_display(self) -> None:
+        self.sound_wave.hide()
+        self.sound_wave.stop()
 
 
 class CoverLoaderWorker(QObject):
@@ -406,6 +421,18 @@ class AlbumExplorerView(QListView):
             source_model = source_model.sourceModel()
         source_model.request_covers_for_albums(albums)
 
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        scrollbar = self.verticalScrollBar()
+        delta = event.angleDelta().y()
+        target = scrollbar.value() - delta
+
+        target = max(
+            scrollbar.minimum(),
+            min(target, scrollbar.maximum())
+        )
+        scrollbar.setValue(target)
+        event.accept()
+
 
 class SortingMode(Enum):
     NONE = 0
@@ -425,6 +452,7 @@ class AlbumExplorer(QWidget):
         self.sort_order = (Qt.DescendingOrder, Qt.AscendingOrder)[
             get_user_config().explorer_sort_order
         ]
+        self.current_playing_album: AlbumItemWidget | None = None
 
         # Layouts
         self.main_v_layout = None
@@ -622,6 +650,31 @@ class AlbumExplorer(QWidget):
         ].index(order)
         self.proxy.sort(0, order)
 
+    def get_item_from_album(self, album: Album) -> AlbumItemWidget | None:
+        if self.view is None or self.proxy is None:
+            return None
+
+        for row in range(self.proxy.rowCount()):
+            index = self.proxy.index(row, 0)
+            item_album = index.data(Qt.UserRole)
+            if item_album is not None and item_album.id == album.id:
+                widget = self.view.indexWidget(index)
+                if isinstance(widget, AlbumItemWidget):
+                    return widget
+
+        if self.model is not None:
+            for row in range(self.model.rowCount()):
+                index = self.model.index(row, 0)
+                item_album = index.data(Qt.UserRole)
+                if item_album is not None and item_album.id == album.id:
+                    proxy_index = self.proxy.mapFromSource(index)
+                    if proxy_index.isValid():
+                        widget = self.view.indexWidget(proxy_index)
+                        if isinstance(widget, AlbumItemWidget):
+                            return widget
+
+        return None
+
     def set_sorting_mode(self, mode: SortingMode, state: bool) -> None:
         self.sorting_mode = mode if state else SortingMode.NONE
         self.proxy.sorting_mode = self.sorting_mode
@@ -640,3 +693,18 @@ class AlbumExplorer(QWidget):
                     toggle.set_checked(False)
         self.proxy.invalidate()
         self.proxy.sort(0, self.sort_order)
+
+    def start_playing_album_display(self, album: Album) -> None:
+        if self.current_playing_album:
+            try:
+                self.current_playing_album.stop_playing_display()
+            except RuntimeError:
+                pass
+        widget = self.get_item_from_album(album)
+        widget.set_playing_display()
+        self.current_playing_album = widget
+
+    def stop_current_playing_album_display(self) -> None:
+        if self.current_playing_album:
+            self.current_playing_album.stop_playing_display()
+            self.current_playing_album = None

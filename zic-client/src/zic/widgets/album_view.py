@@ -7,20 +7,23 @@ from zic.models.song import Song
 from zic.utils.qt_utils import make_toolbutton, set_label_font_size
 from zic.widgets.cover_thumbnail import CoverThumbnail, DEFAULT_COVER
 from zic.api import ZicApi
+from zic.widgets.sound_wave import SoundWave
 
 
 class SongWidget(QWidget):
     play_song_requested = Signal(Song)
 
-    def __init__(self, song: Song) -> None:
+    def __init__(self, song: Song, color: str | None) -> None:
         super().__init__()
         self.song: Song = song
+        self.color = color
 
         # Layouts
         self.main_h_layout = None
 
         # Widgets
         self.play_btn = None
+        self.sound_wave = None
         self.title_lbl = None
         self.duration_lbl = None
         self.artist_credit_lbl = None
@@ -40,6 +43,7 @@ class SongWidget(QWidget):
 
     def init_widgets(self) -> None:
         self.play_btn = make_toolbutton("icons/play.png", tooltip="Play")
+        self.sound_wave = SoundWave(bars=4, height=30)
         self.title_lbl = QLabel(
             f"{self.song.track_number} - {self.song.title}"
             if self.song.track_number is not None else
@@ -52,6 +56,7 @@ class SongWidget(QWidget):
 
     def set_layout(self) -> None:
         self.main_h_layout.addWidget(self.play_btn)
+        self.main_h_layout.addWidget(self.sound_wave)
         self.main_h_layout.addWidget(self.title_lbl)
         self.main_h_layout.addStretch()
         self.main_h_layout.addWidget(self.duration_lbl)
@@ -65,6 +70,20 @@ class SongWidget(QWidget):
 
     def set_default(self) -> None:
         self.main_h_layout.setAlignment(Qt.AlignLeft)
+        self.sound_wave.hide()
+        if self.color:
+            self.sound_wave.set_color(self.color)
+
+    def set_playing_display(self) -> None:
+        self.play_btn.hide()
+        self.sound_wave.show()
+        self.sound_wave.raise_()
+        self.sound_wave.start()
+
+    def stop_playing_display(self) -> None:
+        self.play_btn.show()
+        self.sound_wave.hide()
+        self.sound_wave.stop()
 
 
 class AlbumView(QWidget):
@@ -78,6 +97,7 @@ class AlbumView(QWidget):
         self.album: Album | None = None
         self.cover: AlbumCover | None = None
         self.songs: list[Song] = []
+        self.current_playing_widget: SongWidget | None = None
 
         # Layouts
         self.main_v_layout = None
@@ -99,6 +119,7 @@ class AlbumView(QWidget):
         self.scroll_area = None
         self.scroll_area_widget = None
         self.song_widgets: list[SongWidget] = []
+        self.widget_song_map: dict[int, SongWidget] = {}
 
         self.init_ui()
 
@@ -182,12 +203,29 @@ class AlbumView(QWidget):
         self.songs = self.api.get_album_songs(self.album)
         self.clear_songs()
         for song in self.songs:
-            widget = SongWidget(song)
+            widget = SongWidget(song, self.cover.dominant_color if self.cover else None)
             widget.play_song_requested.connect(lambda s=song: self.play_song_requested.emit(self.album, s))
             self.songs_v_layout.addWidget(widget)
             self.song_widgets.append(widget)
+            self.widget_song_map[song.id] = widget
 
     def clear_songs(self) -> None:
         for song_widget in self.song_widgets:
             song_widget.deleteLater()
         self.song_widgets.clear()
+        self.widget_song_map.clear()
+
+    def start_playing_song_display(self, song: Song) -> None:
+        if self.current_playing_widget:
+            try:
+                self.current_playing_widget.stop_playing_display()
+            except RuntimeError:
+                pass
+        widget = self.widget_song_map[song.id]
+        widget.set_playing_display()
+        self.current_playing_widget = widget
+
+    def stop_current_playing_song_display(self) -> None:
+        if self.current_playing_widget:
+            self.current_playing_widget.stop_playing_display()
+            self.current_playing_widget = None
