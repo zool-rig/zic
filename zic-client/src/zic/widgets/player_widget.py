@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import *
 from PySide6.QtCore import *
 from PySide6.QtGui import *
-from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput, QMediaDevices
 
 from zic.utils.qt_utils import make_toolbutton
 from zic.models.song import Song
@@ -400,6 +400,7 @@ class PlayerWidget(QWidget):
         self.media_player: QMediaPlayer = QMediaPlayer()
         self.audio_output: QAudioOutput = QAudioOutput()
         self.media_player.setAudioOutput(self.audio_output)
+        self.devices: QMediaDevices = QMediaDevices(self)
 
         # Layouts
         self.main_h_layout = None
@@ -446,6 +447,7 @@ class PlayerWidget(QWidget):
         self.playback_widget.previous_requested.connect(self.previous)
         self.playback_widget.next_requested.connect(self.next)
         self.likes_widget.song_liked.connect(self.on_current_song_liked)
+        self.devices.audioOutputsChanged.connect(self.on_audio_outputs_changed)
 
     def on_song_finished(self) -> None:
         if self.current_song is not None:
@@ -513,3 +515,8 @@ class PlayerWidget(QWidget):
     def on_current_song_liked(self, value: int) -> None:
         self.current_song.like_count += value
         self.app.api.sync_song(self.current_song)
+
+    def on_audio_outputs_changed(self) -> None:
+        new_default = QMediaDevices.defaultAudioOutput()
+        if new_default != self.audio_output.device():
+            self.audio_output.setDevice(new_default)
