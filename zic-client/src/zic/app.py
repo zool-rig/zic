@@ -14,6 +14,7 @@ from zic.widgets.album_explorer import AlbumExplorer
 from zic.widgets.player_widget import PlayerWidget
 from zic.models.album import Album, AlbumCover
 from zic.widgets.album_view import AlbumView
+from zic.models.song import Song
 
 
 class ZicUI(QDialog):
@@ -81,7 +82,7 @@ class ZicUI(QDialog):
         self.filter_stacked_widget = QStackedWidget()
         self.artist_filter_widget = ArtistsFilterWidget(self)
         self.genre_filter_widget = GenresFilterWidget(self)
-        self.album_explorer = AlbumExplorer(self)  # TODO replace by api if possible
+        self.album_explorer = AlbumExplorer(self.api)
         self.album_view = AlbumView(self.api)
         self.player_widget = PlayerWidget(self)  # TODO replace by api if possible
 
@@ -116,6 +117,9 @@ class ZicUI(QDialog):
         self.play_random_btn.clicked.connect(self.on_play_random_btn_clicked)
         self.reload_btn.clicked.connect(self.reload)
         self.album_explorer.album_selected.connect(self.on_album_selected)
+        self.album_view.play_album_requested.connect(self.play_album)
+        self.album_view.shuffle_album_requested.connect(self.shuffle_album)
+        self.album_view.play_song_requested.connect(self.play_song)
 
     def set_default(self) -> None:
         self.setWindowFlags(Qt.Window)
@@ -177,3 +181,16 @@ class ZicUI(QDialog):
     def on_album_selected(self, album: Album, cover: AlbumCover | None) -> None:
         self.album_view.show()
         self.album_view.set_album(album, cover)
+
+    def play_album(self, album: Album) -> None:
+        playlist = self.api.get_album_playlist(album)
+        self.player_widget.set_playlist(playlist)
+        self.player_widget.play()
+
+    def shuffle_album(self, album: Album) -> None:
+        playlist = self.api.get_shuffle_album_playlist(album)
+        self.player_widget.set_playlist(playlist)
+        self.player_widget.play()
+
+    def play_song(self, album: Album, song: Song) -> None:
+        pass

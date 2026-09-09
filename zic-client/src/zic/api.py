@@ -314,11 +314,15 @@ class ZicApi:
         self.connection.commit()
         LOGGER.debug(f"Song synchronized : {song}")
 
-    def get_album_songs(self, album: Album) -> list[Song]:
+    def get_album_songs(self, album: Album, shuffle: bool = False) -> list[Song]:
         start_time = time.perf_counter()
         query = self.get_song_query()
         query.push("AND songs.album_id =")
         query.push_bind(album.id)
+        if shuffle:
+            query.push("ORDER BY RANDOM()")
+        else:
+            query.push("ORDER BY songs.track_number")
 
         with RowFactory(self.connection, sqlite3.Row):
             cur = self.connection.execute(*query.build())
@@ -330,3 +334,18 @@ class ZicApi:
             f"{len(songs)} songs from {album.name} fetched in {time.perf_counter() - start_time:.3f}s"
         )
         return songs
+
+    def get_album_playlist(self, album: Album) -> None:
+        return Playlist(
+            lambda: self.get_album_songs(album),
+            self.fetch_random_songs  # TODO : replace by a similarity algo
+        )
+
+    def get_shuffle_album_playlist(self, album: Album) -> None:
+        return Playlist(
+            lambda: self.get_album_songs(album, shuffle=True),
+            self.fetch_random_songs  # TODO : replace by a similarity algo
+        )
+    
+    def get_song_playlist(self, album: Album, song: Song) -> None:
+        pass

@@ -2,6 +2,8 @@ from PySide6.QtWidgets import *
 from PySide6.QtCore import *
 from PySide6.QtGui import *
 
+from functools import partial
+
 from zic.models.album import Album, AlbumCover
 from zic.models.song import Song
 from zic.utils.qt_utils import make_toolbutton, set_label_font_size
@@ -10,6 +12,8 @@ from zic.api import ZicApi
 
 
 class SongWidget(QWidget):
+    play_song_requested = Signal(Song)
+
     def __init__(self, song: Song) -> None:
         super().__init__()
         self.song: Song = song
@@ -20,6 +24,9 @@ class SongWidget(QWidget):
         # Widgets
         self.play_btn = None
         self.title_lbl = None
+        self.duration_lbl = None
+        self.artist_credit_lbl = None
+        self.info_btn = None
 
         self.init_ui()
 
@@ -35,20 +42,38 @@ class SongWidget(QWidget):
 
     def init_widgets(self) -> None:
         self.play_btn = make_toolbutton("icons/play.png", tooltip="Play")
-        self.title_lbl = QLabel(self.song.title)
+        self.title_lbl = QLabel(
+            f"{self.song.track_number} - {self.song.title}"
+            if self.song.track_number is not None else
+            self.song.title
+        )
+        seconds = int(self.song.duration)
+        self.duration_lbl = QLabel(f"{seconds // 60:02d}:{seconds % 60:02d}")
+        self.artist_credit_lbl = QLabel(self.song.artist_credit)
+        self.info_btn = make_toolbutton("icons/artist.png", tooltip="Info")  # TODO icon
 
     def set_layout(self) -> None:
         self.main_h_layout.addWidget(self.play_btn)
         self.main_h_layout.addWidget(self.title_lbl)
+        self.main_h_layout.addStretch()
+        self.main_h_layout.addWidget(self.duration_lbl)
+        self.main_h_layout.addWidget(QLabel("-"))
+        self.main_h_layout.addWidget(self.artist_credit_lbl)
+        self.main_h_layout.addWidget(QLabel("-"))
+        self.main_h_layout.addWidget(self.info_btn)
 
     def set_connections(self) -> None:
-        pass
+        self.play_btn.clicked.connect(lambda: self.play_song_requested.emit(self.song))
 
     def set_default(self) -> None:
         self.main_h_layout.setAlignment(Qt.AlignLeft)
 
 
 class AlbumView(QWidget):
+    play_album_requested = Signal(Album)
+    shuffle_album_requested = Signal(Album)
+    play_song_requested = Signal(Album, Song)
+
     def __init__(self, api: ZicApi) -> None:
         super().__init__()
         self.api: ZicApi = api
@@ -120,7 +145,8 @@ class AlbumView(QWidget):
         self.scroll_area_widget.setLayout(self.songs_v_layout)
 
     def set_connections(self) -> None:
-        pass
+        self.play_btn.clicked.connect(lambda: self.play_album_requested.emit(self.album))
+        self.play_random_btn.clicked.connect(lambda: self.shuffle_album_requested.emit(self.album))
 
     def set_default(self) -> None:
         for layout, alignment in (
@@ -151,6 +177,7 @@ class AlbumView(QWidget):
         self.clear_songs()
         for song in self.songs:
             widget = SongWidget(song)
+            widget.play_song_requested.connect(partial(self.play_song_requested.emit, self.album, song))
             self.songs_v_layout.addWidget(widget)
             self.song_widgets.append(widget)
 

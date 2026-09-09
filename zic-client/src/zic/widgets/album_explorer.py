@@ -324,6 +324,7 @@ class AlbumExplorer(QWidget):
         self.model = AlbumExplorerModel(self.api)
         self.proxy = AlbumFilterProxy()
         self.view = AlbumExplorerView()
+        self.proxy.sorting_mode = self.sorting_mode
         self.proxy.setSourceModel(self.model)
         self.view.setModel(self.proxy)
 
@@ -420,7 +421,9 @@ class AlbumExplorer(QWidget):
 
         menu.addSeparator()
 
-        order_toggle = ToggleSwitch(label="Ascending", checked=self.sort_order)
+        order_toggle = ToggleSwitch(
+            label="Ascending", checked=self.sort_order == Qt.AscendingOrder
+        )
         order_toggle.toggled.connect(
             lambda state: self.set_sort_order(
                 Qt.AscendingOrder if state else Qt.DescendingOrder
@@ -456,4 +459,5 @@ class AlbumExplorer(QWidget):
                     if mode_ == mode:
                         continue
                     toggle.set_checked(False)
+        self.proxy.invalidate()
         self.proxy.sort(0, self.sort_order)
