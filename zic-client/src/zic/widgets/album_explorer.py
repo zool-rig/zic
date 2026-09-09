@@ -2,9 +2,12 @@ from PySide6.QtWidgets import *
 from PySide6.QtCore import *
 from PySide6.QtGui import *
 
+import sqlite3
+
 from enum import Enum
 
 from zic.utils.qt_utils import make_toolbutton, set_label_font_size, SignalsOFF
+from zic.utils.query_builder import QueryBuilder
 from zic.widgets.rules import VRule
 from zic.models.album import Album, AlbumCover
 from zic.widgets.cover_thumbnail import CoverThumbnail, DEFAULT_COVER
@@ -12,7 +15,7 @@ from zic.models.artist import Artist
 from zic.models.genre import Genre
 from zic.widgets.toggle_switch import ToggleSwitch
 from zic.widgets.strong_menu import StrongMenu
-from zic.config import get_user_config
+from zic.config import get_user_config, get_app_config
 from zic.api import ZicApi
 
 
@@ -20,6 +23,8 @@ ALBUM_THUMBNAIL_SIZE = 140
 ALBUM_ITEM_SIZE = QSize(160, 220)
 ALBUM_CHUNK_SIZE = 60
 COVER_ROLE = Qt.UserRole + 1
+PREFETCH_MARGIN_ROWS = 30
+PREFETCH_DEBOUNCE_MS = 80
 
 
 class AlbumItemWidget(QWidget):
@@ -97,6 +102,17 @@ class AlbumItemWidget(QWidget):
         self.shadow.setEnabled(False)
         self.setGraphicsEffect(self.shadow)
 
+    def set_cover(self, cover: AlbumCover | None) -> None:
+        """Update this item's cover once it has been loaded asynchronously."""
+        if cover is None or cover == self.cover:
+            return
+        self.cover = cover
+        self.cover_thumbnail.bytes = cover.thumbnail
+        # Rebuild the drop shadow so it picks up the cover's dominant color.
+        was_hovered = self.shadow.isEnabled() if self.shadow else False
+        self.init_shadow()
+        self.shadow.setEnabled(was_hovered)
+
     def enterEvent(self, event: QEvent) -> None:
         self.shadow.setEnabled(True)
         super().enterEvent(event)
@@ -106,45 +122,80 @@ class AlbumItemWidget(QWidget):
         super().leaveEvent(event)
 
 
+class CoverLoaderWorker(QObject):
+    """
+    Loads album cover thumbnails from SQLite off the UI thread.
+
+    Lives on its own QThread (see AlbumExplorer.init_cover_loader). Never
+    touches any widget directly: it only reads from the database and emits
+    plain data back to the main thread via a Qt signal, which Qt marshals
+    across threads automatically (queued connection) because the receiver
+    (the model) lives on the main thread.
+    """
+
+    covers_loaded = Signal(object)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._connection: sqlite3.Connection | None = None
+
+    def _ensure_connection(self) -> sqlite3.Connection:
+        # Opened lazily so the connection is created on the worker thread
+        # itself (the slot below only ever runs there), since sqlite3
+        # connections should not be shared across threads.
+        if self._connection is None:
+            db_path = get_app_config().db_path
+            self._connection = sqlite3.connect(db_path)
+        return self._connection
+
+    @Slot(object)
+    def load_covers(self, album_ids: list) -> None:
+        if not album_ids:
+            return
+        conn = self._ensure_connection()
+        query = QueryBuilder(
+            "SELECT album_id, thumbnail, dominant_color FROM covers_thumbnails WHERE album_id IN"
+        )
+        query.push_binds(album_ids)
+        cur = conn.execute(*query.build())
+        result = {row[0]: AlbumCover(row[1], row[2]) for row in cur.fetchall()}
+        self.covers_loaded.emit(result)
+
+    def shutdown(self) -> None:
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
+
+
 class AlbumExplorerModel(QAbstractListModel):
+    # Emitted with a list of album ids whose covers should be fetched.
+    # Connected (cross-thread) to CoverLoaderWorker.load_covers.
+    request_covers = Signal(object)
+
     def __init__(self, api) -> None:
         super().__init__()
         self.api: ZicApi = api
         self._albums: list[Album] = []
-        self._loaded_count: int = 0
         self._covers: dict[int, AlbumCover] = {}
+        self._pending_ids: set[int] = set()
 
     def set_albums(self, albums: list[Album]) -> None:
         self.beginResetModel()
         self._albums = albums
         self._covers = {}
-        self._loaded_count = 0
-        self._load_covers(0, min(ALBUM_CHUNK_SIZE, len(self._albums)))
-        self._loaded_count = min(ALBUM_CHUNK_SIZE, len(self._albums))
+        self._pending_ids = set()
         self.endResetModel()
 
-    def _load_covers(self, start: int, end: int) -> None:
-        chunk = self._albums[start:end]
-        if chunk:
-            self._covers.update(self.api.get_albums_cover_thumbnails(chunk))
-
-    def load_all_covers(self) -> None:
-        """Load all remaining album covers."""
-        if self._loaded_count < len(self._albums):
-            self._load_covers(self._loaded_count, len(self._albums))
-            self.beginInsertRows(
-                QModelIndex(), self._loaded_count, len(self._albums) - 1
-            )
-            self._loaded_count = len(self._albums)
-            self.endInsertRows()
-
     def album(self, index: QModelIndex) -> Album | None:
-        if not index.isValid() or index.row() >= self._loaded_count:
+        if not index.isValid() or index.row() >= len(self._albums):
             return None
         return self._albums[index.row()]
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
-        return 0 if parent.isValid() else self._loaded_count
+        # All rows are available immediately: album metadata is already
+        # fully in memory (see api.albums()). Only cover thumbnails are
+        # loaded lazily, so filtering/sorting never has to wait on them.
+        return 0 if parent.isValid() else len(self._albums)
 
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
         album = self.album(index)
@@ -160,22 +211,47 @@ class AlbumExplorerModel(QAbstractListModel):
             return self._covers.get(album.id)
         return None
 
-    def canFetchMore(self, parent: QModelIndex = QModelIndex()) -> bool:
-        return not parent.isValid() and self._loaded_count < len(self._albums)
+    def request_covers_for_albums(self, albums: list[Album]) -> None:
+        """Queue a cover fetch for the given albums, skipping ones already
+        loaded or already in flight."""
+        to_request = []
+        for album in albums:
+            if album.id in self._covers or album.id in self._pending_ids:
+                continue
+            self._pending_ids.add(album.id)
+            to_request.append(album.id)
+        if to_request:
+            self.request_covers.emit(to_request)
 
-    def fetchMore(self, parent: QModelIndex = QModelIndex()) -> None:
-        if parent.isValid():
+    def on_covers_loaded(self, covers: dict[int, AlbumCover]) -> None:
+        """Runs on the main thread (receiver affinity), safe to touch the
+        model / emit dataChanged from here."""
+        if not covers:
             return
-        remaining = len(self._albums) - self._loaded_count
-        to_fetch = min(ALBUM_CHUNK_SIZE, remaining)
-        if to_fetch <= 0:
-            return
-        self._load_covers(self._loaded_count, self._loaded_count + to_fetch)
-        self.beginInsertRows(
-            QModelIndex(), self._loaded_count, self._loaded_count + to_fetch - 1
-        )
-        self._loaded_count += to_fetch
-        self.endInsertRows()
+
+        id_set = set(covers.keys())
+        for album_id, cover in covers.items():
+            self._covers[album_id] = cover
+            self._pending_ids.discard(album_id)
+
+        # Notify the view only for the rows that actually changed, in
+        # contiguous runs, so we don't repaint the whole list.
+        run_start = None
+        for row, album in enumerate(self._albums):
+            in_run = album.id in id_set
+            if in_run and run_start is None:
+                run_start = row
+            elif not in_run and run_start is not None:
+                self.dataChanged.emit(
+                    self.index(run_start, 0), self.index(row - 1, 0), [COVER_ROLE]
+                )
+                run_start = None
+        if run_start is not None:
+            self.dataChanged.emit(
+                self.index(run_start, 0),
+                self.index(len(self._albums) - 1, 0),
+                [COVER_ROLE],
+            )
 
 
 class AlbumFilterProxy(QSortFilterProxyModel):
@@ -243,11 +319,26 @@ class AlbumExplorerView(QListView):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
 
+        # Debounce cover requests so a single scroll gesture doesn't fire
+        # one signal per pixel: we only ask for the visible range once
+        # things have settled for a moment.
+        self._prefetch_timer = QTimer(self)
+        self._prefetch_timer.setSingleShot(True)
+        self._prefetch_timer.setInterval(PREFETCH_DEBOUNCE_MS)
+        self._prefetch_timer.timeout.connect(self._request_visible_covers)
+
     def setModel(self, model: QAbstractItemModel) -> None:
         super().setModel(model)
         model.modelReset.connect(self.create_item_widgets)
         model.rowsInserted.connect(self.create_item_widgets)
+        model.dataChanged.connect(self.on_model_data_changed)
+
+        model.modelReset.connect(self.schedule_prefetch)
+        model.rowsInserted.connect(self.schedule_prefetch)
+        model.layoutChanged.connect(self.schedule_prefetch)
+
         self.create_item_widgets()
+        self.schedule_prefetch()
 
     def create_item_widgets(self, *_) -> None:
         model = self.model()
@@ -262,6 +353,58 @@ class AlbumExplorerView(QListView):
                 self.setIndexWidget(
                     index, AlbumItemWidget(album, index.data(COVER_ROLE))
                 )
+
+    def on_model_data_changed(
+        self, top_left: QModelIndex, bottom_right: QModelIndex, roles: list[int]
+    ) -> None:
+        if roles and COVER_ROLE not in roles:
+            return
+        model = self.model()
+        for row in range(top_left.row(), bottom_right.row() + 1):
+            index = model.index(row, 0)
+            widget = self.indexWidget(index)
+            if widget is None:
+                continue
+            widget.set_cover(index.data(COVER_ROLE))
+
+    def scrollContentsBy(self, dx: int, dy: int) -> None:
+        super().scrollContentsBy(dx, dy)
+        self.schedule_prefetch()
+
+    def resizeEvent(self, event: QEvent) -> None:
+        super().resizeEvent(event)
+        self.schedule_prefetch()
+
+    def schedule_prefetch(self, *_) -> None:
+        self._prefetch_timer.start()
+
+    def _request_visible_covers(self) -> None:
+        model = self.model()
+        if model is None or model.rowCount() == 0:
+            return
+
+        top_index = self.indexAt(self.viewport().rect().topLeft())
+        bottom_index = self.indexAt(self.viewport().rect().bottomRight())
+        top_row = top_index.row() if top_index.isValid() else 0
+        bottom_row = (
+            bottom_index.row() if bottom_index.isValid() else model.rowCount() - 1
+        )
+        if bottom_row < top_row:
+            bottom_row = model.rowCount() - 1
+
+        start = max(0, top_row - PREFETCH_MARGIN_ROWS)
+        end = min(model.rowCount() - 1, bottom_row + PREFETCH_MARGIN_ROWS)
+
+        albums = []
+        for row in range(start, end + 1):
+            album = model.index(row, 0).data(Qt.UserRole)
+            if album is not None:
+                albums.append(album)
+
+        source_model = model
+        while isinstance(source_model, QSortFilterProxyModel):
+            source_model = source_model.sourceModel()
+        source_model.request_covers_for_albums(albums)
 
 
 class SortingMode(Enum):
@@ -302,6 +445,10 @@ class AlbumExplorer(QWidget):
         self.artist_toggle = None
         self.year_toggle = None
 
+        # Background cover loading
+        self.cover_thread = None
+        self.cover_worker = None
+
         self.init_ui()
 
     def init_ui(self) -> None:
@@ -310,6 +457,7 @@ class AlbumExplorer(QWidget):
         self.set_layout()
         self.set_connections()
         self.set_default()
+        self.init_cover_loader()
 
     def init_layouts(self) -> None:
         self.main_v_layout = QVBoxLayout(self)
@@ -327,6 +475,34 @@ class AlbumExplorer(QWidget):
         self.proxy.sorting_mode = self.sorting_mode
         self.proxy.setSourceModel(self.model)
         self.view.setModel(self.proxy)
+
+    def init_cover_loader(self) -> None:
+        """
+        Sets up the dedicated worker thread that loads cover thumbnails.
+
+        The worker (CoverLoaderWorker) is moved to its own QThread. All
+        cross-thread communication goes through Qt signals only:
+          - model.request_covers (main thread) -> worker.load_covers (worker thread)
+          - worker.covers_loaded (worker thread) -> model.on_covers_loaded (main thread)
+        Qt automatically queues these calls onto the receiver's thread, so
+        no widget or model state is ever touched from the worker thread.
+        """
+        self.cover_thread = QThread(self)
+        self.cover_worker = CoverLoaderWorker()
+        self.cover_worker.moveToThread(self.cover_thread)
+
+        self.model.request_covers.connect(self.cover_worker.load_covers)
+        self.cover_worker.covers_loaded.connect(self.model.on_covers_loaded)
+        self.cover_thread.finished.connect(self.cover_worker.deleteLater)
+
+        self.cover_thread.start()
+
+    def shutdown(self) -> None:
+        """Call this from the parent window's closeEvent to stop the
+        worker thread cleanly before the app exits."""
+        if self.cover_thread is not None:
+            self.cover_thread.quit()
+            self.cover_thread.wait()
 
     def set_layout(self) -> None:
         self.main_v_layout.addWidget(self.title_lbl)
@@ -346,8 +522,9 @@ class AlbumExplorer(QWidget):
         self.sort_btn.clicked.connect(self.show_sort_menu)
 
     def on_filter_changed(self) -> None:
-        """Handle filter changes by ensuring all albums are loaded."""
-        self.model.load_all_covers()
+        # No need to force-load every cover anymore: all rows are already
+        # present in the model, so filtering is instant regardless of
+        # cover-loading state.
         self.proxy.setFilterFixedString(self.search_edt.text())
 
     def set_default(self) -> None:
@@ -375,13 +552,11 @@ class AlbumExplorer(QWidget):
         )
 
     def set_artist_filters(self, artists: list[Artist]) -> None:
-        self.model.load_all_covers()
         self.proxy.genre_ids = set()
         self.proxy.artist_ids = {artist.id for artist in artists}
         self.proxy.setFilterFixedString(self.search_edt.text())
 
     def set_genre_filters(self, genres: list[Genre]) -> None:
-        self.model.load_all_covers()
         self.proxy.artist_ids = set()
         self.proxy.genre_ids = {genre.id for genre in genres}
         self.proxy.setFilterFixedString(self.search_edt.text())

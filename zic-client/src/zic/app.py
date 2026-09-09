@@ -144,6 +144,7 @@ class ZicUI(QDialog):
         pass
 
     def closeEvent(self, _: QEvent) -> None:
+        self.album_explorer.shutdown()
         self.api.disconnect()
         get_user_config().save()
 
