@@ -1,3 +1,5 @@
+from typing import Any
+
 from PySide6.QtWidgets import *
 from PySide6.QtCore import *
 from PySide6.QtGui import *
@@ -24,6 +26,7 @@ ALBUM_THUMBNAIL_SIZE = 140
 ALBUM_ITEM_SIZE = QSize(160, 220)
 ALBUM_CHUNK_SIZE = 60
 COVER_ROLE = Qt.UserRole + 1
+TEXT_ROLE = Qt.UserRole + 2
 PREFETCH_MARGIN_ROWS = 30
 PREFETCH_DEBOUNCE_MS = 80
 
@@ -212,7 +215,7 @@ class AlbumExplorerModel(QAbstractListModel):
         # loaded lazily, so filtering/sorting never has to wait on them.
         return 0 if parent.isValid() else len(self._albums)
 
-    def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
+    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any | None:
         album = self.album(index)
         if album is None:
             return None
@@ -224,6 +227,10 @@ class AlbumExplorerModel(QAbstractListModel):
             return album
         if role == COVER_ROLE:
             return self._covers.get(album.id)
+        if role == TEXT_ROLE:
+            texts = [album.name.lower(), album.artist.normalized_name]
+            texts.extend(genre.name.lower() for genre in album.genres)
+            return texts
         return None
 
     def request_covers_for_albums(self, albums: list[Album]) -> None:
@@ -300,11 +307,11 @@ class AlbumFilterProxy(QSortFilterProxyModel):
         if not pattern:
             return True
 
-        return (
-            pattern in album.name.lower()
-            or pattern in album.artist.normalized_name
-            or pattern in {genre.name.lower() for genre in album.genres}
-        )
+        for text in self.sourceModel().data(index, TEXT_ROLE):
+            for p in pattern.split(" "):
+                if p in text:
+                    return True
+        return False
 
     def lessThan(self, source_left: QModelIndex, source_right: QModelIndex) -> bool:
         left_album: Album = self.sourceModel().data(source_left, Qt.UserRole)
@@ -318,6 +325,42 @@ class AlbumFilterProxy(QSortFilterProxyModel):
             return (left_album.year or 0) < (right_album.year or 0)
 
         return False
+
+
+class AlbumCompletionModel(QAbstractListModel):
+    def __init__(self, source_model: AlbumExplorerModel, text_role: int = TEXT_ROLE) -> None:
+        super().__init__()
+        self._source = source_model
+        self._text_role = text_role
+        self._entries: list[tuple[str, int]] = []  # (texte, source_row)
+
+        self._rebuild()
+        self._source.modelReset.connect(self._rebuild)
+        self._source.rowsInserted.connect(self._rebuild)
+        self._source.rowsRemoved.connect(self._rebuild)
+
+    def _rebuild(self, *_) -> None:
+        self.beginResetModel()
+        seen: dict[str, int] = {}  # texte -> source_row (garde la première occurrence)
+        for row in range(self._source.rowCount()):
+            for text in (self._source.index(row, 0).data(self._text_role) or []):
+                if text not in seen:
+                    seen[text] = row
+        self._entries = list(seen.items())
+        self.endResetModel()
+
+    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
+        return 0 if parent.isValid() else len(self._entries)
+
+    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any | None:
+        if not index.isValid():
+            return None
+        text, source_row = self._entries[index.row()]
+        if role in (Qt.DisplayRole, Qt.EditRole):
+            return text
+        if role == Qt.UserRole:
+            return self._source.index(source_row, 0).data(Qt.UserRole)  # -> Album
+        return None
 
 
 class AlbumExplorerView(QListView):
@@ -341,6 +384,8 @@ class AlbumExplorerView(QListView):
         self._prefetch_timer.setSingleShot(True)
         self._prefetch_timer.setInterval(PREFETCH_DEBOUNCE_MS)
         self._prefetch_timer.timeout.connect(self._request_visible_covers)
+
+        self._item_widgets: dict[int, AlbumItemWidget] = {}
 
     def setModel(self, model: QAbstractItemModel) -> None:
         super().setModel(model)
@@ -467,6 +512,7 @@ class AlbumExplorer(QWidget):
         self.model = None
         self.proxy = None
         self.view = None
+        self.completion_model = None 
 
         # Menu
         self.title_toggle = None
@@ -498,6 +544,7 @@ class AlbumExplorer(QWidget):
         self.sort_btn = make_toolbutton("icons/sort.png", tooltip="Sorting")
         # self.settings_btn = make_toolbutton("icons/burger-bar.png", tooltip="Settings")
         self.model = AlbumExplorerModel(self.api)
+        self.completion_model = AlbumCompletionModel(self.model)
         self.proxy = AlbumFilterProxy()
         self.view = AlbumExplorerView()
         self.proxy.sorting_mode = self.sorting_mode
@@ -564,6 +611,7 @@ class AlbumExplorer(QWidget):
             clear_button[0].triggered.connect(lambda: (self.search_edt.clear(), self.on_filter_changed()))
         
         set_label_font_size(self.title_lbl, 12)
+        self.search_edt.setCompleter(QCompleter(self.completion_model, completionRole=Qt.DisplayRole, caseSensitivity=Qt.CaseInsensitive))
 
     def fill(self) -> None:
         albums = self.api.albums()

@@ -76,6 +76,7 @@ class FilterListWidget(QWidget):
         self.list_widget.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
         set_label_font_size(self.title_lbl, 12)
+        self.search_edt.setCompleter(QCompleter(self.list_widget.model(), caseSensitivity=Qt.CaseInsensitive))
 
     def fill(self) -> None:
         self.title_lbl.setText(f"{self.list_widget.count()} - {self.title}")

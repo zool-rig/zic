@@ -24,8 +24,9 @@ class GenresFilterWidget(FilterListWidget):
         super().__init__(app, "Genres")
 
     def fill(self) -> None:
-        for artist in self.app.api.genres():
-            item = GenreItem(artist)
+        for genre in self.app.api.genres():
+            item = GenreItem(genre)
+            item.setData(Qt.UserRole, genre.name)
             self.list_widget.addItem(item)
 
         self.filled = True

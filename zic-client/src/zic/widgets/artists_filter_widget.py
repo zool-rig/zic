@@ -26,6 +26,7 @@ class ArtistsFilterWidget(FilterListWidget):
     def fill(self) -> None:
         for artist in self.app.api.artists():
             item = ArtistItem(artist)
+            item.setData(Qt.UserRole, artist.name)
             self.list_widget.addItem(item)
 
         self.filled = True
