@@ -212,3 +212,60 @@ class ZicUI(QDialog):
     def on_song_finished(self, _: Song) -> None:
         self.album_view.stop_current_playing_song_display()
         self.album_explorer.stop_current_playing_album_display()
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        key_bindings = {v: k for k, v in get_user_config().key_bindings.items()}
+        action_name = key_bindings.get(int(event.key()))
+        if action_name is None:
+            return
+        
+        action = {
+            "play/pause": self.toggle_play_pause,
+            "mute": self.mute_sound,
+            "next-song": self.play_next_song,
+            "previous-song": self.play_previous_song,
+            "reload": self.reload,
+            "shuffle": self.on_play_random_btn_clicked,
+            "advance": self.advance,
+            "rewind": self.rewind,
+            "volume_up": self.volume_up,
+            "volume_down": self.volume_donw,
+        }[action_name]
+
+        action()
+
+    def toggle_play_pause(self) -> None:
+        self.player_widget.toggle_play_pause()
+
+    def mute_sound(self) -> None:
+        self.player_widget.volume_slider.toggle_mute()
+
+    def play_next_song(self) -> None:
+        self.player_widget.next()
+
+    def play_previous_song(self) -> None:
+        self.player_widget.previous()
+
+    def advance(self) -> None:
+        self.player_widget.playback_widget.advance(10 if QApplication.keyboardModifiers() == Qt.ControlModifier else 5)
+
+    def rewind(self) -> None:
+        self.player_widget.playback_widget.rewind(10 if QApplication.keyboardModifiers() == Qt.ControlModifier else 5)
+
+    def volume_up(self) -> None:
+        self.player_widget.volume_slider.volume_up(5)
+
+    def volume_donw(self) -> None:
+        self.player_widget.volume_slider.volume_down(5)
+
+
+class GlobalKeyFilter(QObject):
+    def __init__(self, app_instance: ZicUI) -> None:
+        super().__init__()
+        self.app_instance: ZicUI = app_instance
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.KeyPress and event.key() in {Qt.Key_Space, Qt.Key_Left, Qt.Key_Right}:
+            self.app_instance.keyPressEvent(event)
+            return True
+        return super().eventFilter(obj, event)

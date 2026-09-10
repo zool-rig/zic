@@ -3,10 +3,11 @@ import toml
 import json
 import logging
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from appdirs import user_data_dir, user_config_dir
 from pathlib import Path
 from enum import Enum
+from PySide6.QtCore import Qt
 
 
 LOGGER = logging.getLogger("ZIC - Config")
@@ -53,6 +54,21 @@ class AppConfig:
         LOGGER.debug(f"App config saved  : {APP_CONFIG_PATH}")
 
 
+def default_key_bindings() -> dict[str, int]:
+    return {
+        "play/pause": int(Qt.Key_Space),
+        "mute": int(Qt.Key_M),
+        "next-song": int(Qt.Key_N),
+        "previous-song": int(Qt.Key_P),
+        "reload": int(Qt.Key_F5),
+        "shuffle": int(Qt.Key_S),
+        "advance": int(Qt.Key_Right),
+        "rewind": int(Qt.Key_Left),
+        "volume_up": int(Qt.Key_Plus),
+        "volume_down": int(Qt.Key_Minus),
+    }
+
+
 @dataclass
 class UserConfig:
     artists_descending_order: bool = False
@@ -61,6 +77,7 @@ class UserConfig:
     muted: bool = False
     explorer_sort_order: int = 1
     explorer_sorting_mode: int = 1
+    key_bindings: dict[str, int] = field(default_factory=default_key_bindings)
 
     @classmethod
     def default(cls) -> "UserConfig":

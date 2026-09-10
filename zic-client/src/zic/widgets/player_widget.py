@@ -330,6 +330,14 @@ class PlaybackWidget(QWidget):
 
         return super().eventFilter(watched, event)
 
+    def advance(self, value: int) -> None:
+        elapsed = min(self.media_player.position() + value * 1000, self.time_slider.maximum())
+        self.seek(elapsed)
+
+    def rewind(self, value: int) -> None:
+        elapsed = max(self.media_player.position() - value * 1000, self.time_slider.minimum())
+        self.seek(elapsed)
+
 
 class VolumeSlider(QWidget):
     volume_changed = Signal(int)
@@ -390,6 +398,26 @@ class VolumeSlider(QWidget):
         self.mute_btn.setIcon(self.mute_icon if muted else self.volume_icon)
         self.muted.emit(muted)
         get_user_config().muted = muted
+
+    def toggle_mute(self) -> None:
+        self.mute_btn.toggle()
+        self.on_mute_clicked()
+
+    def volume_up(self, value: int) -> None:
+        maximum = self.slider.maximum()
+        current_value = self.slider.value()
+        new_value = min(current_value + value, maximum)
+        if new_value != current_value:
+            self.slider.setValue(new_value)
+            self.on_volume_changed(new_value)
+
+    def volume_down(self, value: int) -> None:
+        minimum = self.slider.minimum()
+        current_value = self.slider.value()
+        new_value = max(current_value - value, minimum)
+        if new_value != current_value:
+            self.slider.setValue(new_value)
+            self.on_volume_changed(new_value)
 
 
 class PlayerWidget(QWidget):
@@ -529,3 +557,9 @@ class PlayerWidget(QWidget):
         new_default = QMediaDevices.defaultAudioOutput()
         if new_default != self.audio_output.device():
             self.audio_output.setDevice(new_default)
+
+    def toggle_play_pause(self) -> None:
+        if self.playback_widget.playing:
+            self.playback_widget.pause()
+        else:
+            self.playback_widget.play()

@@ -221,6 +221,10 @@ class AlbumView(QWidget):
                 self.current_playing_widget.stop_playing_display()
             except RuntimeError:
                 pass
+
+        if song.id not in self.widget_song_map:
+            return
+        
         widget = self.widget_song_map[song.id]
         widget.set_playing_display()
         self.current_playing_widget = widget

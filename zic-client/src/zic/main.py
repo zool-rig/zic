@@ -10,7 +10,7 @@ if "ZIC_DEVEL" not in os.environ:
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from zic.app import ZicUI  # noqa: E402
+from zic.app import ZicUI, GlobalKeyFilter  # noqa: E402
 from zic.config import app_config_exists
 
 
@@ -32,6 +32,8 @@ def main() -> None:
     if not app_config_exists():
         first_launch()
     app = ZicUI()
+    key_filter = GlobalKeyFilter(app)
+    qapp.installEventFilter(key_filter)
     app.show()
     sys.exit(qapp.exec())
 
