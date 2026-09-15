@@ -16,6 +16,7 @@ from zic.models.album import Album, AlbumCover
 from zic.widgets.album_view import AlbumView
 from zic.models.song import Song
 from zic.models.artist import Artist
+from zic.resources import get_resource
 
 
 class ZicUI(QDialog):
@@ -53,7 +54,7 @@ class ZicUI(QDialog):
         self.set_layout()
         self.set_connections()
         self.set_default()
-        self.set_style_sheet()
+        # self.set_style_sheet()
 
         # timer = QTimer(self)
         # timer.timeout.connect(self.set_style_sheet)
@@ -148,7 +149,13 @@ class ZicUI(QDialog):
         self.h_splitter.setStretchFactor(2, 1)
 
     def set_style_sheet(self) -> None:
-        pass
+        qss_path = get_resource("style/style.qss")
+        icons_path = get_resource("icons")
+        with open(qss_path, "r") as f:
+            stylesheet = f.read()
+        # Replace placeholder with actual icon path
+        stylesheet = stylesheet.replace("{ICON_PATH}", icons_path)
+        self.setStyleSheet(stylesheet)
 
     def closeEvent(self, _: QEvent) -> None:
         self.album_explorer.shutdown()

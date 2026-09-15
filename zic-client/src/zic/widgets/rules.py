@@ -6,7 +6,6 @@ class HRule(QFrame):
         super().__init__(*args, **kwargs)
         self.setObjectName("Separator")
         self.setFrameShape(QFrame.HLine)
-        self.setLineWidth(2)
 
 
 class VRule(QFrame):
@@ -14,4 +13,3 @@ class VRule(QFrame):
         super().__init__(*args, **kwargs)
         self.setObjectName("Separator")
         self.setFrameShape(QFrame.VLine)
-        self.setLineWidth(2)
