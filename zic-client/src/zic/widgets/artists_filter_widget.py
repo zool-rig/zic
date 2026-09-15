@@ -36,3 +36,10 @@ class ArtistsFilterWidget(FilterListWidget):
     def on_list_selection_changed(self) -> None:
         items = super().on_list_selection_changed()
         self.app.album_explorer.set_artist_filters([item.artist for item in items])
+
+    def select_artists(self, artists: list[Artist]) -> None:
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            if item.artist not in artists:
+                continue
+            item.setSelected(True)

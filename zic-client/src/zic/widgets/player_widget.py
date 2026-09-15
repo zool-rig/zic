@@ -5,19 +5,27 @@ from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput, QMediaDevices
 
 from zic.utils.qt_utils import make_toolbutton
 from zic.models.song import Song
+from zic.models.album import Album
+from zic.models.artist import Artist
 from zic.models.playlist import Playlist
 from zic.widgets.cover_thumbnail import CoverThumbnail
 from zic.config import get_user_config
 from zic.resources import get_resource
+from zic.widgets.url_label import UrlLabel
 
 
 class SongInfoWidget(QWidget):
     LABEL_WIDTH = 260
     LABEL_HEIGHT = 22
 
+    song_url_clicked = Signal(Song)
+    album_url_clicked = Signal(Album)
+    artist_url_clicked = Signal(list)
+
     def __init__(self, app: QWidget) -> None:
         super().__init__()
         self.app: QWidget = app
+        self.song: Song | None = None
 
         # Layouts
         self.main_h_layout = None
@@ -44,9 +52,9 @@ class SongInfoWidget(QWidget):
 
     def init_widgets(self) -> None:
         self.cover_image = CoverThumbnail()
-        self.song_title_lbl = QLabel("🎵 : -")
-        self.album_title_lbl = QLabel("💿 : -")
-        self.artist_name_lbl = QLabel("🎤 : -")
+        self.song_title_lbl = UrlLabel("🎵 : -", clickable=False)
+        self.album_title_lbl = UrlLabel("💿 : -", clickable=False)
+        self.artist_name_lbl = UrlLabel("🎤 : -", clickable=False)
 
     def set_layout(self) -> None:
         self.main_h_layout.addWidget(self.cover_image)
@@ -56,7 +64,9 @@ class SongInfoWidget(QWidget):
         self.v_layout.addWidget(self.artist_name_lbl)
 
     def set_connections(self) -> None:
-        pass
+        self.song_title_lbl.clicked.connect(lambda _: self.song_url_clicked.emit(self.song))
+        self.album_title_lbl.clicked.connect(lambda _: self.album_url_clicked.emit(self.song.album))
+        self.artist_name_lbl.clicked.connect(lambda _: self.artist_url_clicked.emit(self.app.api.get_song_artists(self.song)))
 
     def set_default(self) -> None:
         for label in (
@@ -92,6 +102,9 @@ class SongInfoWidget(QWidget):
         self.set_label_text(
             self.artist_name_lbl, f"🎤 : {song.artist_credit if song else '-'}"
         )
+        for label in (self.song_title_lbl, self.album_title_lbl, self.artist_name_lbl):
+            label.clickable = song is not None
+        self.song = song
 
 
 class LikesWidget(QWidget):
@@ -424,6 +437,9 @@ class PlayerWidget(QWidget):
     song_started = Signal(Song)
     song_paused = Signal(Song)
     song_finished = Signal(Song)
+    song_url_clicked = Signal(Song)
+    album_url_clicked = Signal(Album)
+    artist_url_clicked = Signal(list)
 
     def __init__(self, app: QWidget) -> None:
         super().__init__()
@@ -440,7 +456,7 @@ class PlayerWidget(QWidget):
         self.main_h_layout = None
 
         # Widgets
-        self.current_song_info_widget = None
+        self.song_info_widget = None
         self.likes_widget = None
         self.playback_widget = None
         self.volume_slider = None
@@ -458,13 +474,13 @@ class PlayerWidget(QWidget):
         self.main_h_layout = QHBoxLayout(self)
 
     def init_widgets(self) -> None:
-        self.current_song_info_widget = SongInfoWidget(self.app)
+        self.song_info_widget = SongInfoWidget(self.app)
         self.likes_widget = LikesWidget()
         self.playback_widget = PlaybackWidget(self.media_player)
         self.volume_slider = VolumeSlider()
 
     def set_layout(self) -> None:
-        self.main_h_layout.addWidget(self.current_song_info_widget)
+        self.main_h_layout.addWidget(self.song_info_widget)
         self.main_h_layout.addWidget(self.likes_widget)
         self.main_h_layout.addStretch()
         self.main_h_layout.addWidget(self.playback_widget)
@@ -484,6 +500,9 @@ class PlayerWidget(QWidget):
         self.devices.audioOutputsChanged.connect(self.on_audio_outputs_changed)
         self.playback_widget.song_paused.connect(lambda: self.song_paused.emit(self.current_song))
         self.playback_widget.song_resumed.connect(lambda: self.song_started.emit(self.current_song))
+        self.song_info_widget.song_url_clicked.connect(self.song_url_clicked)
+        self.song_info_widget.album_url_clicked.connect(self.album_url_clicked)
+        self.song_info_widget.artist_url_clicked.connect(self.artist_url_clicked)
 
     def on_song_finished(self) -> None:
         if self.current_song is not None:
@@ -503,7 +522,7 @@ class PlayerWidget(QWidget):
     @current_song.setter
     def current_song(self, song: Song | None) -> None:
         self._current_song = song
-        self.current_song_info_widget.set_current_song(song)
+        self.song_info_widget.set_current_song(song)
         self.likes_widget.set_like_count(song.like_count if song is not None else 0)
         if song is not None:
             self.media_player.setSource(

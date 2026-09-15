@@ -371,3 +371,20 @@ class ZicApi:
             lambda: self.get_album_songs(album, order_mode=AlbumSongOrder.SONG_ID, song=song),
             self.fetch_random_songs  # TODO : replace by a similarity algo
         )
+
+    def get_song_artists(self, song: Song) -> list[Artist]:
+        start_time = time.perf_counter()
+        cur = self.connection.execute(
+            "SELECT artists.id, artists.name, artists.normalized_name "
+            "FROM song_artists "
+            "JOIN artists ON artists.id = song_artists.artist_id "
+            "WHERE song_artists.song_id = ? "
+            "ORDER BY song_artists.position, artists.id;",
+            (song.id,),
+        )
+        artists = [Artist(*row) for row in cur.fetchall()]
+        LOGGER.debug(
+            f"{len(artists)} artists for song (id: {song.id}) fetched in "
+            f"{time.perf_counter() - start_time:.3f}s"
+        )
+        return artists

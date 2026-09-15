@@ -233,3 +233,10 @@ class AlbumView(QWidget):
         if self.current_playing_widget:
             self.current_playing_widget.stop_playing_display()
             self.current_playing_widget = None
+
+    def scroll_to_song(self, song: Song) -> None:
+        if song.id not in self.widget_song_map:
+            return
+        
+        widget = self.widget_song_map[song.id]
+        self.scroll_area.ensureWidgetVisible(widget)

@@ -15,6 +15,7 @@ from zic.widgets.player_widget import PlayerWidget
 from zic.models.album import Album, AlbumCover
 from zic.widgets.album_view import AlbumView
 from zic.models.song import Song
+from zic.models.artist import Artist
 
 
 class ZicUI(QDialog):
@@ -123,6 +124,9 @@ class ZicUI(QDialog):
         self.player_widget.song_started.connect(self.on_song_started)
         self.player_widget.song_paused.connect(self.on_song_paused)
         self.player_widget.song_finished.connect(self.on_song_finished)
+        self.player_widget.song_url_clicked.connect(self.jump_to_song)
+        self.player_widget.album_url_clicked.connect(self.jump_to_album)
+        self.player_widget.artist_url_clicked.connect(self.jump_to_artists)
 
     def set_default(self) -> None:
         self.setWindowFlags(Qt.Window)
@@ -257,6 +261,19 @@ class ZicUI(QDialog):
 
     def volume_donw(self) -> None:
         self.player_widget.volume_slider.volume_down(5)
+
+    def jump_to_song(self, song: Song) -> None:
+        self.jump_to_album(song.album)
+        QTimer.singleShot(0, lambda: self.album_view.scroll_to_song(song))
+
+    def jump_to_album(self, album: Album) -> None:
+        self.album_view.show()
+        self.album_view.set_album(album, self.api.get_album_cover_thumbnail(album))
+        self.album_view.start_playing_song_display(self.player_widget.current_song)
+        self.album_explorer.start_playing_album_display(album)
+
+    def jump_to_artists(self, artists: list[Artist]) -> None:
+        self.artist_filter_widget.select_artists(artists)
 
 
 class GlobalKeyFilter(QObject):
