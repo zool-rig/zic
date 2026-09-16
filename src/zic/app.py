@@ -131,7 +131,7 @@ class ZicUI(QDialog):
 
     def set_default(self) -> None:
         self.setWindowFlags(Qt.Window)
-        self.setWindowTitle(f"ZIC - {importlib.metadata.version('zic-client')}")
+        self.setWindowTitle(f"ZIC - {importlib.metadata.version('zic')}")
 
         for layout, alignment in (
             (self.main_v_layout, Qt.AlignTop),
