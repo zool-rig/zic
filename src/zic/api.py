@@ -17,7 +17,7 @@ from zic.utils.db_utils import RowFactory
 
 
 SONG_CHUNK_LIMIT = 50
-LOGGER = logging.getLogger("ZIC - API")
+LOGGER = logging.getLogger("API")
 
 
 class AlbumSongOrder(Enum):

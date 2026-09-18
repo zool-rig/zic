@@ -15,6 +15,7 @@ CREATE TABLE albums (
     raw_date         TEXT,                   -- raw value of the "date" tag, format not guaranteed
     artist_id        INTEGER NOT NULL,       -- based on albumartist (fallback: artist of track 1, else unknown)
     is_compilation   INTEGER NOT NULL DEFAULT 0,
+    normalized_name  TEXT NOT NULL UNIQUE,   -- trim + lower, to deduplicate variants
 
     FOREIGN KEY (artist_id) REFERENCES artists(id),
     UNIQUE (name, artist_id)
@@ -46,9 +47,8 @@ CREATE TABLE genres (
 CREATE TABLE album_genres (
     album_id   INTEGER NOT NULL,
     genre_id   INTEGER NOT NULL,
-    source     TEXT NOT NULL,   -- 'tag' | 'lastfm' | 'manual'
 
-    PRIMARY KEY (album_id, genre_id, source),
+    PRIMARY KEY (album_id, genre_id),
     FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE,
     FOREIGN KEY (genre_id) REFERENCES genres(id) ON DELETE CASCADE
 );

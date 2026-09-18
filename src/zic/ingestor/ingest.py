@@ -1,0 +1,603 @@
+import sys
+import re
+import logging
+import sqlite3
+import time
+import unicodedata
+import requests
+import json
+import io
+
+from pathlib import Path
+from mutagen import File as MutagenFile, Tags
+from typing import Any
+from secret_type.typing.types import StringLike
+from PIL import Image
+
+from zic.ingestor.discogs_secret import DiscogsSecret, InvalidDiscogsSecrets
+
+
+SCHEMA_PATH = Path(__file__).parent.parent / "schema.sql"
+AUDIO_EXTENSIONS = {".mp3", ".m4a"}
+# Strips stray leading/trailing punctuation and whitespace noise sometimes
+# left by ripping tools, e.g. ". High tone        " -> "High tone".
+NOISE_RE = re.compile(r"^[\s.\-_/,;:]+|[\s.\-_/,;:]+$")
+UNKNOWN_ARTIST = "Unknown Artist"
+UNKNOWN_ALBUM = "Unknown Album"
+# Tag values that mean "no real artist/album", seen in the wild from various
+# ripping/tagging tools. Case- and accent-insensitive match, folded to the
+# canonical Unknown fallback so they don't create near-duplicate placeholder
+# rows in the DB.
+ARTIST_PLACEHOLDER_TOKENS = {
+    "unknown", "unknown artist", "various", "various artists",
+    "inconnu", "artiste inconnu", "n/a", "na", "none", "no artist",
+}
+ALBUM_PLACEHOLDER_TOKENS = {
+    "unknown", "unknown album", "inconnu", "album inconnu",
+    "n/a", "na", "none", "no album",
+}
+YEAR_RE = re.compile(r"(\d{4})")
+GENRE_SPLIT_RE = re.compile(r"\s*;\s*")
+# Pure year or decade tokens ("2015", "90s", "2010s") sometimes leak into the
+# genre field from scrobble-based taggers -- not actual musical genres.
+YEAR_OR_DECADE_RE = re.compile(r"^(?:\d{4}|\d{2}s|\d{4}s)$")
+# Personal/list-style tags that occasionally end up in the genre field
+# (e.g. via tools that copy a user's Last.fm tag cloud into ID3/MP4 tags),
+# not actual musical genres. Necessarily incomplete: catches known recurring
+# junk, not every possible arbitrary tag (see ingest.py's docstring).
+GENRE_DENYLIST = {
+    "wishlist", "vinyl", "favourite albums", "favorite albums", "albums",
+    "albums i have listened", "compilation", "long", "joy", "fun",
+    "wikipedia", "masterpiece", "remix", "chill",
+}
+GENRE_DENYLIST_PATTERNS = [
+    re.compile(r"^best of \d{4}$", re.IGNORECASE),
+    re.compile(r"^\d+ albums.*before you die$", re.IGNORECASE),
+]
+DISCOGS_MIN_REQUEST_INTERVAL = 1.1
+DISCOGS_RATE_LIMIT_WAIT_SECONDS = 60.0
+DISCOGS_MAX_ATTEMPTS = 2
+_last_discogs_request_at = 0.0
+COVER_MAX_SIZE = 200          # px, longest side
+COVER_MAX_BYTES = 100 * 1024  # must stay under the DB's CHECK constraint
+
+LOGGER = logging.getLogger("Ingest")
+
+
+# ---------------------------------------------------------------------------
+# DB initialization
+# ---------------------------------------------------------------------------
+
+def init_db(conn: sqlite3.Connection):
+    existing = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='songs'"
+    ).fetchone()
+    if existing:
+        return
+    if not SCHEMA_PATH.exists():
+        LOGGER.error(f"schema.sql not found next to the script ({SCHEMA_PATH})")
+        sys.exit(1)
+    conn.executescript(SCHEMA_PATH.read_text())
+    LOGGER.info("Database initialized (new file).")
+
+
+# ---------------------------------------------------------------------------
+# Normalization / parsing
+# ---------------------------------------------------------------------------
+
+def fold_diacritics(s: str) -> str:
+    """"Taï Phong" -> "Tai Phong": strips accents for matching purposes."""
+    return "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c))
+
+
+def clean_name(name: str | None) -> str | None:
+    """Strips stray leading/trailing punctuation/whitespace noise and
+    collapses internal whitespace. Returns None if nothing meaningful is left."""
+    if not name:
+        return None
+    cleaned = NOISE_RE.sub("", name)
+    cleaned = " ".join(cleaned.split())
+    return cleaned or None
+
+
+def first_tag(tags: Tags, *keys: str) -> Any:
+    for key in keys:
+        values = tags.get(key)
+        if values:
+            value = values[0] if isinstance(values, list) else values
+            value = str(value).strip()
+            if value:
+                return value
+    return None
+
+
+def parse_number_pair(value: str | None) -> tuple[int | None, int | None]:
+    """Parses "3/12" -> (3, 12). Also handles "3" -> (3, None)."""
+    if not value:
+        return None, None
+    value = str(value).strip()
+    if "/" in value:
+        num, _, total = value.partition("/")
+    else:
+        num, total = value, None
+    try:
+        num_i = int(num.strip()) if num.strip() else None
+    except ValueError:
+        num_i = None
+    try:
+        total_i = int(total.strip()) if total and total.strip() else None
+    except ValueError:
+        total_i = None
+    return num_i, total_i
+
+
+def resolve_artist_field(raw: str | None) -> str:
+    """Maps a cleaned tag value to UNKNOWN_ARTIST if it's a known placeholder
+    ("Unknown", "Various", "Inconnu"...), otherwise returns it as-is."""
+    if not raw:
+        return UNKNOWN_ARTIST
+    key = fold_diacritics(raw).strip().lower()
+    if key in ARTIST_PLACEHOLDER_TOKENS:
+        return UNKNOWN_ARTIST
+    return raw
+
+
+def resolve_album_field(raw: str | None) -> str:
+    if not raw:
+        return UNKNOWN_ALBUM
+    key = fold_diacritics(raw).strip().lower()
+    if key in ALBUM_PLACEHOLDER_TOKENS:
+        return UNKNOWN_ALBUM
+    return raw
+
+
+def normalize_name(name: str) -> str:
+    """Comparison key used for artists.normalized_name: case- and
+    accent-insensitive, whitespace-collapsed."""
+    name = fold_diacritics(name)
+    return " ".join(name.split()).strip().lower()
+
+
+def extract_year(raw_date: str | None) -> int | None:
+    if not raw_date:
+        return None
+    match = YEAR_RE.search(str(raw_date))
+    return int(match.group(1)) if match else None
+
+
+def split_genres(raw: str | None) -> set[str]:
+    if not raw:
+        return []
+    parts = [clean_name(p) for p in GENRE_SPLIT_RE.split(raw)]
+    return {p.lower() for p in parts if p}
+
+
+def is_year_or_decade(token: str) -> bool:
+    return bool(YEAR_OR_DECADE_RE.fullmatch(token.strip()))
+
+
+def is_denylisted_genre(token: str) -> bool:
+    key = fold_diacritics(token).strip().lower()
+    if key in GENRE_DENYLIST:
+        return True
+    return any(p.match(token.strip()) for p in GENRE_DENYLIST_PATTERNS)
+
+
+def is_known_artist_name(conn: sqlite3.Connection, token: str) -> bool:
+    """True if `token` matches an artist already known in the DB -- a strong
+    signal that this "genre" tag is actually a copy-pasted artist name, not a
+    real genre. Order-dependent (an artist not yet seen this run won't match
+    yet), which is an accepted best-effort limitation."""
+    row = conn.execute(
+        "SELECT 1 FROM artists WHERE normalized_name = ?", (normalize_name(token),)
+    ).fetchone()
+    return row is not None
+
+
+def genre_match_key(name: str) -> str:
+    """Loose comparison key for genre deduplication: folds accents, case,
+    AND separators (-, _, /) to spaces, so "trip-hop", "trip hop" and
+    "Trip_Hop" are all recognized as the same genre."""
+    key = fold_diacritics(name).lower()
+    key = re.sub(r"[-_/]+", " ", key)
+    return " ".join(key.split())
+
+
+# ---------------------------------------------------------------------------
+# Metadata
+# ---------------------------------------------------------------------------
+
+def read_metadata(path: Path) -> dict[str, Any]:
+    """Returns a metadata dict, with fallbacks for fields that are required
+    in the DB even if tags are missing/unreadable. Text fields are passed
+    through clean_name() to strip stray punctuation noise."""
+    ext = path.suffix.lower()
+    result = {
+        "title": clean_name(path.stem) or path.stem,
+        "artist_credit": None,
+        "album_name": None,
+        "albumartist": None,
+        "genre": None,
+        "raw_date": None,
+        "track_number": None,
+        "track_total": None,
+        "disc_number": None,
+        "disc_total": None,
+        "duration": 0.0,
+        "bitrate": None,
+        "sample_rate": None,
+        "format": ext.lstrip("."),
+        "file_size": path.stat().st_size,
+    }
+
+    try:
+        audio = MutagenFile(path, easy=True)
+    except Exception:
+        audio = None
+
+    if audio is not None:
+        if audio.info is not None:
+            result["duration"] = float(getattr(audio.info, "length", 0.0) or 0.0)
+            result["bitrate"] = getattr(audio.info, "bitrate", None)
+            result["sample_rate"] = getattr(audio.info, "sample_rate", None)
+
+        if audio.tags:
+            tags = audio.tags
+            result["title"] = clean_name(first_tag(tags, "title")) or result["title"]
+            result["artist_credit"] = clean_name(first_tag(tags, "artist"))
+            result["album_name"] = clean_name(first_tag(tags, "album"))
+            result["albumartist"] = clean_name(first_tag(tags, "albumartist"))
+            result["genre"] = first_tag(tags, "genre")  # split later, may contain ';'-joined values
+            result["raw_date"] = first_tag(tags, "date", "originaldate", "year")
+            result["track_number"], result["track_total"] = parse_number_pair(
+                first_tag(tags, "tracknumber")
+            )
+            result["disc_number"], result["disc_total"] = parse_number_pair(
+                first_tag(tags, "discnumber")
+            )
+
+    return result
+
+
+def empty_album_discogs_data() -> dict[str, Any]:
+    return {
+        "cover_url": None,
+        "genres": set(),
+        "year": None,
+    }
+
+
+def wait_for_discogs_slot() -> None:
+    global _last_discogs_request_at
+
+    elapsed = time.monotonic() - _last_discogs_request_at
+    if elapsed < DISCOGS_MIN_REQUEST_INTERVAL:
+        time.sleep(DISCOGS_MIN_REQUEST_INTERVAL - elapsed)
+    _last_discogs_request_at = time.monotonic()
+
+
+def discogs_retry_wait(response: requests.Response) -> float:
+    retry_after = response.headers.get("Retry-After")
+    if retry_after:
+        try:
+            return max(float(retry_after), DISCOGS_MIN_REQUEST_INTERVAL)
+        except ValueError:
+            pass
+    return DISCOGS_RATE_LIMIT_WAIT_SECONDS
+
+
+def get_album_discogs_data(album_name: str, artist_name: str, key: StringLike, token: StringLike) -> dict[str, Any]:
+    if album_name == UNKNOWN_ALBUM or artist_name == UNKNOWN_ARTIST:
+        return empty_album_discogs_data()
+
+    with key.dangerous_reveal() as discogs_key, token.dangerous_reveal() as discogs_token:
+        authorization = f"Discogs key={discogs_key}, secret={discogs_token}"
+
+    for attempt in range(DISCOGS_MAX_ATTEMPTS):
+        wait_for_discogs_slot()
+        response = requests.get(
+            "https://api.discogs.com/database/search",
+            params={
+                "query": album_name,
+                "type": "master",
+                "artist": artist_name,
+            },
+            headers={
+                "Authorization": authorization,
+                "Content-Type": "application/json",
+                "User-Agent": "zic-ingestor"
+            }
+        )
+        if response.status_code != 429 or attempt == DISCOGS_MAX_ATTEMPTS - 1:
+            break
+        wait_seconds = discogs_retry_wait(response)
+        LOGGER.warning("Discogs rate limit reached; waiting %.1f seconds before retrying.", wait_seconds)
+        time.sleep(wait_seconds)
+
+    if not response.ok:
+        if response.status_code == 401:
+            raise InvalidDiscogsSecrets()
+        else:
+            response.raise_for_status()
+    response_data = response.json()
+    result = empty_album_discogs_data()
+
+    for r in response_data["results"]:
+        if "cover_image" in r and not result["cover_url"]:
+            result["cover_url"] = r["cover_image"]
+        if "year" in r and not result["year"]:
+            result["year"] = r["year"]
+        if "genre" in r:
+            result["genres"].update(g.strip().lower() for g in r["genre"])
+        if "style" in r:
+            result["genres"].update(g.strip().lower() for g in r["style"])
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Get-or-create helpers
+# ---------------------------------------------------------------------------
+
+
+def get_or_create_artist(conn: sqlite3.Connection, name: str) -> int:
+    norm = normalize_name(name)
+    row = conn.execute(
+        "SELECT id FROM artists WHERE normalized_name = ?", (norm,)
+    ).fetchone()
+    if row:
+        return row[0]
+    cur = conn.execute(
+        "INSERT INTO artists (name, normalized_name) VALUES (?, ?)", (name, norm)
+    )
+    LOGGER.info(f"Artist created : {name}")
+    return cur.lastrowid
+
+
+def get_or_create_album(
+    conn: sqlite3.Connection, name: str, artist_id: int, raw_date: str | None, is_compilation: bool
+) -> int:
+    norm = normalize_name(name)
+    row = conn.execute(
+        "SELECT id FROM albums WHERE normalized_name = ?", (norm,)
+    ).fetchone()
+    if row:
+        return row[0]
+    cur = conn.execute(
+        "INSERT INTO albums (name, year, raw_date, artist_id, is_compilation, normalized_name) VALUES (?, ?, ?, ?, ?, ?)",
+        (name, extract_year(raw_date), raw_date, artist_id, int(is_compilation), norm),
+    )
+    LOGGER.info(f"Album created : {name}")
+    return cur.lastrowid
+
+
+def get_or_create_genre(conn: sqlite3.Connection, name: str) -> int:
+    # Case-, accent-, AND separator-insensitive lookup: "Rock"/"rock" and
+    # "trip-hop"/"trip hop" all resolve to the same row instead of creating
+    # near-duplicates. Genre counts are small (a few hundred at most) so an
+    # in-Python scan is cheap and simpler than a SQL collation.
+    key = genre_match_key(name)
+    for gid, gname in conn.execute("SELECT id, name FROM genres"):
+        if genre_match_key(gname) == key:
+            return gid
+    cur = conn.execute("INSERT INTO genres (name) VALUES (?)", (name.strip(),))
+    LOGGER.info(f"Genre created : {name}")
+    return cur.lastrowid
+
+
+def link_album_genre(conn: sqlite3.Connection, album_id: int, genre_id: int):
+    conn.execute(
+        "INSERT OR IGNORE INTO album_genres (album_id, genre_id) VALUES (?, ?)",
+        (album_id, genre_id),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Cover thumbnail extraction
+# ---------------------------------------------------------------------------
+
+def get_embedded_picture_bytes(path: Path) -> bytes | None:
+    """Reads the embedded artwork straight from the file's raw tags (APIC for
+    mp3, covr for m4a). Must be opened WITHOUT easy=True: the easy tag layer
+    only exposes the mapped text fields, not picture frames."""
+    ext = path.suffix.lower()
+    try:
+        audio = MutagenFile(path)
+    except Exception:
+        return None
+    if audio is None or audio.tags is None:
+        return None
+
+    if ext == ".mp3":
+        apics = audio.tags.getall("APIC") if hasattr(audio.tags, "getall") else []
+        return bytes(apics[0].data) if apics else None
+    elif ext == ".m4a":
+        covers = audio.tags.get("covr")
+        return bytes(covers[0]) if covers else None
+    return None
+
+
+def extract_cover_thumbnail(path: Path):
+    """Extracts, downsizes and compresses the embedded artwork so it fits
+    the DB's 100KB CHECK constraint. Returns
+    (jpeg_bytes, mime_type, width, height, dominant_color_hex) or None if
+    there's no embedded artwork, it can't be decoded, or Pillow isn't
+    installed.
+    """
+    raw = get_embedded_picture_bytes(path)
+    if not raw:
+        return None
+    try:
+        img = Image.open(io.BytesIO(raw)).convert("RGB")
+    except Exception:
+        return None
+
+    img.thumbnail((COVER_MAX_SIZE, COVER_MAX_SIZE))
+    dominant = img.resize((1, 1)).getpixel((0, 0))
+    dominant_hex = "#{:02x}{:02x}{:02x}".format(*dominant)
+
+    quality = 85
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=quality)
+    while buf.tell() > COVER_MAX_BYTES and quality > 20:
+        quality -= 10
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=quality)
+
+    if buf.tell() > COVER_MAX_BYTES:
+        return None  # give up rather than violate the DB-level CHECK constraint
+
+    return buf.getvalue(), "image/jpeg", img.width, img.height, dominant_hex
+
+
+def ensure_cover_thumbnail(
+    conn: sqlite3.Connection,
+    album_id: int,
+    path: Path,
+    cover_url: str | None,
+):
+    """Extracts and stores a thumbnail for the album, at most once per run
+    and only if the album doesn't already have one."""
+
+    if conn.execute("SELECT 1 FROM covers_thumbnails WHERE album_id = ?", (album_id,)).fetchone():
+        return
+
+    result = extract_cover_thumbnail(path)
+    if result is None:
+        if cover_url:
+            print(">>>>>>>", cover_url)
+            raise
+            return
+        else:
+            return
+    thumb_bytes, mime, w, h, color = result
+    conn.execute(
+        "INSERT INTO covers_thumbnails (album_id, thumbnail, mime_type, width, height, dominant_color) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (album_id, thumb_bytes, mime, w, h, color),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Ingesting a single file
+# ---------------------------------------------------------------------------
+
+def ingest_file(
+    conn: sqlite3.Connection,
+    path: Path,
+    root: Path,
+    rescan: bool,
+    discogs_secret: DiscogsSecret,
+    cover_attempted: set[int],
+    discogs_albums_data: dict[int, dict[str, Any]],
+) -> str:
+    rel_path = str(path.relative_to(root))
+    file_mtime = path.stat().st_mtime
+    file_mtime_str = f"{file_mtime:.6f}"
+
+    existing = conn.execute(
+        "SELECT id, file_modified_at FROM songs WHERE path = ?", (rel_path,)
+    ).fetchone()
+
+    if existing and not rescan:
+        _, existing_mtime = existing
+        if existing_mtime == file_mtime_str:
+            return "unchanged"
+
+    meta = read_metadata(path)
+
+    artist_credit = resolve_artist_field(meta["artist_credit"])
+    album_name = resolve_album_field(meta["album_name"])
+    albumartist_name = resolve_artist_field(meta["albumartist"] or meta["artist_credit"])
+
+    album_artist_id = get_or_create_artist(conn, albumartist_name)
+
+    if album_artist_id not in discogs_albums_data:
+        album_discogs_data = get_album_discogs_data(
+            album_name,
+            albumartist_name,
+            discogs_secret.key,
+            discogs_secret.token
+        )
+        discogs_albums_data[album_artist_id] = album_discogs_data
+    else:
+        album_discogs_data = discogs_albums_data[album_artist_id]
+
+    is_compilation = bool(
+        meta["albumartist"] and meta["artist_credit"] and albumartist_name != artist_credit
+    )
+    year = meta["raw_date"] or (album_discogs_data["year"])
+    album_id = get_or_create_album(conn, album_name, album_artist_id, year, is_compilation)
+
+    genres = album_discogs_data["genres"]
+    genres.update(split_genres(meta["genre"]))
+    genre_tag_id = None
+    rejected_genre_tags = []
+    for genre_name in genres:
+        if (
+            is_year_or_decade(genre_name)
+            or is_denylisted_genre(genre_name)
+            or is_known_artist_name(conn, genre_name)
+        ):
+            rejected_genre_tags.append(genre_name)
+            continue
+        gid = get_or_create_genre(conn, genre_name)
+        if genre_tag_id is None:
+            genre_tag_id = gid
+        link_album_genre(conn, album_id, gid)
+
+    extra_tags_json = json.dumps({"rejected_genre_tags": rejected_genre_tags}) if rejected_genre_tags else None
+
+    if album_id not in cover_attempted:
+        # Cover thumbnail: extracted once per album from whichever file we
+        # happen to be processing when we first see that album.
+        ensure_cover_thumbnail(
+            conn,
+            album_id,
+            path,
+            album_discogs_data["cover_url"]
+        )
+        cover_attempted.add(album_id)
+    
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def find_audio_files(root: Path):
+    for path in root.rglob("*"):
+        if path.is_file() and path.suffix.lower() in AUDIO_EXTENSIONS:
+            yield path
+
+
+def ingest(
+    root: Path,
+    db_path: Path,
+    rescan: bool,
+    discogs_key: str | None = None,
+    discogs_token: str | None = None,
+) -> None:
+    discogs_secret = DiscogsSecret.from_env()
+    if discogs_key is not None:
+        discogs_secret.key = discogs_key
+    if discogs_token is not None:
+        discogs_secret.token = discogs_token
+
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA foreign_keys = ON")
+    init_db(conn)
+
+    counts = {"new": 0, "updated": 0, "unchanged": 0, "error": 0}
+    cover_attempted: set[int] = set()
+    discogs_albums_data: dict[int, dict[str, Any]] = {}
+
+    for path in find_audio_files(root):
+        ingest_file(
+            conn,
+            path,
+            root,
+            rescan,
+            discogs_secret,
+            cover_attempted,
+            discogs_albums_data,
+        )
