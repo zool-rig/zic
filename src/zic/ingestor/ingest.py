@@ -7,6 +7,7 @@ import unicodedata
 import requests
 import json
 import io
+import hashlib
 
 from pathlib import Path
 from mutagen import File as MutagenFile, Tags
@@ -15,15 +16,20 @@ from secret_type.typing.types import StringLike
 from PIL import Image
 
 from zic.ingestor.discogs_secret import DiscogsSecret, InvalidDiscogsSecrets
+from zic.logging import get_logger
 
 
 SCHEMA_PATH = Path(__file__).parent.parent / "schema.sql"
+
 AUDIO_EXTENSIONS = {".mp3", ".m4a"}
+
 # Strips stray leading/trailing punctuation and whitespace noise sometimes
 # left by ripping tools, e.g. ". High tone        " -> "High tone".
 NOISE_RE = re.compile(r"^[\s.\-_/,;:]+|[\s.\-_/,;:]+$")
+
 UNKNOWN_ARTIST = "Unknown Artist"
 UNKNOWN_ALBUM = "Unknown Album"
+
 # Tag values that mean "no real artist/album", seen in the wild from various
 # ripping/tagging tools. Case- and accent-insensitive match, folded to the
 # canonical Unknown fallback so they don't create near-duplicate placeholder
@@ -36,11 +42,13 @@ ALBUM_PLACEHOLDER_TOKENS = {
     "unknown", "unknown album", "inconnu", "album inconnu",
     "n/a", "na", "none", "no album",
 }
+
 YEAR_RE = re.compile(r"(\d{4})")
-GENRE_SPLIT_RE = re.compile(r"\s*;\s*")
 # Pure year or decade tokens ("2015", "90s", "2010s") sometimes leak into the
 # genre field from scrobble-based taggers -- not actual musical genres.
 YEAR_OR_DECADE_RE = re.compile(r"^(?:\d{4}|\d{2}s|\d{4}s)$")
+
+GENRE_SPLIT_RE = re.compile(r"\s*;|,\s*")
 # Personal/list-style tags that occasionally end up in the genre field
 # (e.g. via tools that copy a user's Last.fm tag cloud into ID3/MP4 tags),
 # not actual musical genres. Necessarily incomplete: catches known recurring
@@ -54,14 +62,29 @@ GENRE_DENYLIST_PATTERNS = [
     re.compile(r"^best of \d{4}$", re.IGNORECASE),
     re.compile(r"^\d+ albums.*before you die$", re.IGNORECASE),
 ]
+
 DISCOGS_MIN_REQUEST_INTERVAL = 1.1
 DISCOGS_RATE_LIMIT_WAIT_SECONDS = 60.0
 DISCOGS_MAX_ATTEMPTS = 2
 _last_discogs_request_at = 0.0
+
 COVER_MAX_SIZE = 200          # px, longest side
 COVER_MAX_BYTES = 100 * 1024  # must stay under the DB's CHECK constraint
 
-LOGGER = logging.getLogger("Ingest")
+LEADING_ARTICLE_RE = re.compile(
+    r"^(the|a|an|le|la|les|un|une|des)\s+", re.IGNORECASE
+)
+
+# Heuristic separators used to split a composite artist_credit into several
+# artists ("A feat. B", "A & B", "A, B"...). Best-effort: on atypical
+# composite tags (long classical-music credits, etc.) the split can be
+# imperfect. The raw artist_credit is always kept (after noise-stripping via
+# clean_name) in the DB regardless, so nothing meaningful is ever lost.
+ARTIST_SPLIT_RE = re.compile(
+    r"\s*(?:,|;|/|&|\bfeat\.?\b|\bft\.?\b)\s*", re.IGNORECASE
+)
+
+LOGGER = get_logger("Ingest")
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +226,16 @@ def genre_match_key(name: str) -> str:
     return " ".join(key.split())
 
 
+def make_sort_title(title: str) -> str:
+    return LEADING_ARTICLE_RE.sub("", title).strip().lower()
+
+
+def split_artists(artist_credit: str) -> list[str]:
+    parts = [clean_name(p) for p in ARTIST_SPLIT_RE.split(artist_credit)]
+    parts = [p for p in parts if p]
+    return parts or [artist_credit.strip()]
+
+
 # ---------------------------------------------------------------------------
 # Metadata
 # ---------------------------------------------------------------------------
@@ -299,7 +332,7 @@ def get_album_discogs_data(album_name: str, artist_name: str, key: StringLike, t
             "https://api.discogs.com/database/search",
             params={
                 "query": album_name,
-                "type": "master",
+                "type": "release",
                 "artist": artist_name,
             },
             headers={
@@ -335,10 +368,17 @@ def get_album_discogs_data(album_name: str, artist_name: str, key: StringLike, t
     return result
 
 
+def compute_hash(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 # ---------------------------------------------------------------------------
 # Get-or-create helpers
 # ---------------------------------------------------------------------------
-
 
 def get_or_create_artist(conn: sqlite3.Connection, name: str) -> int:
     norm = normalize_name(name)
@@ -391,6 +431,17 @@ def link_album_genre(conn: sqlite3.Connection, album_id: int, genre_id: int):
         (album_id, genre_id),
     )
 
+
+def set_song_artists(conn: sqlite3.Connection, song_id: int, artist_credit: str):
+    conn.execute("DELETE FROM song_artists WHERE song_id = ?", (song_id,))
+    names = split_artists(artist_credit) if artist_credit else [UNKNOWN_ARTIST]
+    for position, name in enumerate(names):
+        artist_id = get_or_create_artist(conn, name)
+        role = "main" if position == 0 else "featured"
+        conn.execute(
+            "INSERT OR IGNORE INTO song_artists (song_id, artist_id, role, position) VALUES (?, ?, ?, ?)",
+            (song_id, artist_id, role, position),
+        )
 
 # ---------------------------------------------------------------------------
 # Cover thumbnail extraction
@@ -466,7 +517,6 @@ def ensure_cover_thumbnail(
     if result is None:
         if cover_url:
             print(">>>>>>>", cover_url)
-            raise
             return
         else:
             return
@@ -505,6 +555,9 @@ def ingest_file(
             return "unchanged"
 
     meta = read_metadata(path)
+    if meta["duration"] == 0.0 and meta["file_size"] == 0:
+        LOGGER.warning(f"Can't read : {path.relative_to(root)}, maybe it is corrupted or empty")
+        return "skipped"
 
     artist_credit = resolve_artist_field(meta["artist_credit"])
     album_name = resolve_album_field(meta["album_name"])
@@ -513,12 +566,16 @@ def ingest_file(
     album_artist_id = get_or_create_artist(conn, albumartist_name)
 
     if album_artist_id not in discogs_albums_data:
-        album_discogs_data = get_album_discogs_data(
-            album_name,
-            albumartist_name,
-            discogs_secret.key,
-            discogs_secret.token
-        )
+        try:
+            album_discogs_data = get_album_discogs_data(
+                album_name,
+                albumartist_name,
+                discogs_secret.key,
+                discogs_secret.token
+            )
+        except requests.ConnectionError:
+            LOGGER.warning("Can't connect to Discogs API.")
+            album_discogs_data = empty_album_discogs_data()
         discogs_albums_data[album_artist_id] = album_discogs_data
     else:
         album_discogs_data = discogs_albums_data[album_artist_id]
@@ -558,6 +615,61 @@ def ingest_file(
             album_discogs_data["cover_url"]
         )
         cover_attempted.add(album_id)
+
+    content_hash = compute_hash(path)
+
+    sort_title = make_sort_title(meta["title"])
+
+    if existing:
+        song_id = existing[0]
+        conn.execute(
+            """
+            UPDATE songs SET
+                title = ?, artist_credit = ?, album_id = ?,
+                track_number = ?, track_total = ?, disc_number = ?, disc_total = ?,
+                genre_tag_id = ?, duration = ?, format = ?, file_size = ?,
+                bitrate = ?, sample_rate = ?, content_hash = ?,
+                sort_title = ?, extra_tags = ?, file_modified_at = ?,
+                imported_at = datetime('now')
+            WHERE id = ?
+            """,
+            (
+                meta["title"], artist_credit, album_id,
+                meta["track_number"], meta["track_total"], meta["disc_number"], meta["disc_total"],
+                genre_tag_id, meta["duration"], meta["format"], meta["file_size"],
+                meta["bitrate"], meta["sample_rate"], content_hash,
+                sort_title, extra_tags_json, file_mtime_str,
+                song_id,
+            ),
+        )
+        set_song_artists(conn, song_id, artist_credit)
+        return "updated"
+    else:
+        same_hash = conn.execute("SELECT title FROM songs WHERE content_hash = ?", (content_hash,)).fetchone()
+        if same_hash:
+            LOGGER.warning(f"{path.relative_to(root)} has the same content as {same_hash[0]}, skipped")
+            return "skipped"
+        cur = conn.execute(
+            """
+            INSERT INTO songs (
+                path, title, artist_credit, album_id,
+                track_number, track_total, disc_number, disc_total,
+                genre_tag_id, duration, format, file_size,
+                bitrate, sample_rate, content_hash, sort_title, extra_tags,
+                file_modified_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                rel_path, meta["title"], artist_credit, album_id,
+                meta["track_number"], meta["track_total"], meta["disc_number"], meta["disc_total"],
+                genre_tag_id, meta["duration"], meta["format"], meta["file_size"],
+                meta["bitrate"], meta["sample_rate"], content_hash, sort_title, extra_tags_json,
+                file_mtime_str,
+            ),
+        )
+        song_id = cur.lastrowid
+        set_song_artists(conn, song_id, artist_credit)
+        return "created"
     
 
 # ---------------------------------------------------------------------------
@@ -583,21 +695,36 @@ def ingest(
     if discogs_token is not None:
         discogs_secret.token = discogs_token
 
-    conn = sqlite3.connect(db_path)
-    conn.execute("PRAGMA foreign_keys = ON")
-    init_db(conn)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        init_db(conn)
 
-    counts = {"new": 0, "updated": 0, "unchanged": 0, "error": 0}
-    cover_attempted: set[int] = set()
-    discogs_albums_data: dict[int, dict[str, Any]] = {}
+        counts = {"created": 0, "updated": 0, "unchanged": 0, "error": 0, "skipped": 0}
+        cover_attempted: set[int] = set()
+        discogs_albums_data: dict[int, dict[str, Any]] = {}
+        file_count = 0
+        
+        for path in find_audio_files(root):
+            file_count += 1
+            try:
+                status = ingest_file(
+                    conn,
+                    path,
+                    root,
+                    rescan,
+                    discogs_secret,
+                    cover_attempted,
+                    discogs_albums_data,
+                )
+                counts[status] += 1
+                LOGGER.info(f"Song {status} : '{path.relative_to(root)}'")
+            except Exception as e:
+                counts["error"] += 1
+                LOGGER.error(f"Failed to ingest '{path.relative_to(root)}': {e!r}")
 
-    for path in find_audio_files(root):
-        ingest_file(
-            conn,
-            path,
-            root,
-            rescan,
-            discogs_secret,
-            cover_attempted,
-            discogs_albums_data,
-        )
+        conn.commit()
+
+        LOGGER.info("Ingest finished !")
+        LOGGER.info(f"File count : {file_count}")
+        for status, count in sorted(counts.items(), key=lambda x: x[0]):
+            LOGGER.info(f"{status.title()} : {count}")

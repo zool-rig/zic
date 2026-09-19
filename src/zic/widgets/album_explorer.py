@@ -626,8 +626,11 @@ class AlbumExplorer(QWidget):
             self.fill()
 
     def on_album_selection_changed(self, current: QModelIndex, _: QModelIndex) -> None:
+        album = current.data(Qt.UserRole)
+        if album is None:
+            return
         self.album_selected.emit(
-            current.data(Qt.UserRole),
+            album,
             current.data(COVER_ROLE),
         )
 

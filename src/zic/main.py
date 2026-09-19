@@ -1,15 +1,7 @@
 import sys
-import os
-import logging
 import click
 
 from pathlib import Path
-
-
-if "ZIC_DEVEL" not in os.environ:
-    os.environ.setdefault(
-        "QT_LOGGING_RULES", "qt.multimedia.ffmpeg.*=false;qt.multimedia.ffmpeg=false"
-    )
 
 
 def first_launch() -> None:
@@ -40,11 +32,6 @@ def launch_ui() -> None:
 @click.pass_context
 @click.option("-V", "version", is_flag=True)
 def cli(ctx: click.Context, version: bool) -> None:
-    logging.basicConfig(
-        format="%(asctime)s - ZIC - %(name)s - %(levelname)s - %(message)s",
-        level=logging.DEBUG if "ZIC_DEVEL" in os.environ else logging.INFO,
-    )
-
     if version:
         import importlib.metadata
 
@@ -95,8 +82,20 @@ def ingest(
 
 
 @cli.command("compute-genres")
-def compute_genres() -> None:
-    print("Compute genres")
+@click.argument(
+    "db",
+    type=click.Path(
+        exists=True,
+        dir_okay=False,
+        writable=True,
+        path_type=Path,
+    ),
+    help="Path to the SQLite database"
+)
+def compute_genres(db: Path) -> None:
+    from zic.ingestor.genres import compute_genres_positions
+
+    compute_genres_positions(db)
 
 
 def main() -> None:

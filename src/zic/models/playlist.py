@@ -9,20 +9,25 @@ class Playlist:
         if not self.fetch_funcs:
             raise ValueError("You need to provide at least one function that fetches songs")
         self.fetch_func: Callable[[], list[Song]] = self.fetch_funcs.pop(0)
+        self.played_song_ids: set[int] = set()
         self.songs: Iterator | None = self.fetch_songs()
         self.current: Song | None = None
         self.played: list[Song] = []
         self.future: list[Song] = []
 
     def fetch_songs(self) -> Iterator | None:
-        new_songs = self.fetch_func()
-        if not new_songs:
-            return
-        return iter(new_songs)
+        while True:
+            new_songs = self.fetch_func(self.played_song_ids)
+            if new_songs:
+                return iter(new_songs)
+            if not self.fetch_funcs:
+                return None
+            self.fetch_func = self.fetch_funcs.pop(0)
 
     def next(self) -> Song | None:
         if self.current is not None:
             self.played.append(self.current)
+            self.played_song_ids.add(self.current.id)
 
         if self.future:
             self.current = self.future.pop()

@@ -9,8 +9,10 @@ from pathlib import Path
 from enum import Enum
 from PySide6.QtCore import Qt
 
+from zic.logging import get_logger
 
-LOGGER = logging.getLogger("Config")
+
+LOGGER = get_logger("Config")
 APP_CONFIG_PATH = Path(user_config_dir("Zic")) / "app_config.toml"
 USER_CONFIG_PATH = Path(user_data_dir("Zic")) / "user_config.json"
 

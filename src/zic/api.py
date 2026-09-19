@@ -14,10 +14,11 @@ from zic.models.playlist import Playlist
 from zic.config import get_app_config
 from zic.utils.query_builder import QueryBuilder
 from zic.utils.db_utils import RowFactory
+from zic.logging import get_logger
 
 
 SONG_CHUNK_LIMIT = 50
-LOGGER = logging.getLogger("API")
+LOGGER = get_logger("API")
 
 
 class AlbumSongOrder(Enum):
@@ -239,9 +240,14 @@ class ZicApi:
 
         return songs
 
-    def fetch_random_songs(self) -> list[Song]:
+    def fetch_random_songs(self, exclude_ids: set[int] | None = None) -> list[Song]:
         start_time = time.perf_counter()
         query = self.get_song_query()
+
+        if exclude_ids:
+            query.push("AND songs.id NOT IN")
+            query.push_binds(exclude_ids)
+
         query.push(f"ORDER BY RANDOM() LIMIT {SONG_CHUNK_LIMIT}")
 
         with RowFactory(self.connection, sqlite3.Row):
@@ -356,19 +362,19 @@ class ZicApi:
 
     def get_album_playlist(self, album: Album) -> None:
         return Playlist(
-            lambda: self.get_album_songs(album),
+            lambda *_: self.get_album_songs(album),
             self.fetch_random_songs  # TODO : replace by a similarity algo
         )
 
     def get_shuffle_album_playlist(self, album: Album) -> None:
         return Playlist(
-            lambda: self.get_album_songs(album, order_mode=AlbumSongOrder.RANDOM),
+            lambda *_: self.get_album_songs(album, order_mode=AlbumSongOrder.RANDOM),
             self.fetch_random_songs  # TODO : replace by a similarity algo
         )
     
     def get_song_playlist(self, album: Album, song: Song) -> None:
         return Playlist(
-            lambda: self.get_album_songs(album, order_mode=AlbumSongOrder.SONG_ID, song=song),
+            lambda *_: self.get_album_songs(album, order_mode=AlbumSongOrder.SONG_ID, song=song),
             self.fetch_random_songs  # TODO : replace by a similarity algo
         )
 

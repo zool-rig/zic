@@ -80,7 +80,7 @@ class FirstLaunchDialog(QDialog):
     def on_root_dir_changed(self, path: Path) -> None:
         if path.exists():
             potential_db_path = path / ".db"
-            if potential_db_path.exists():
+            if not self.db_path_selector.is_valid_path() and potential_db_path.exists():
                 self.db_path_selector.path = potential_db_path
         self.check_inputs()
 
