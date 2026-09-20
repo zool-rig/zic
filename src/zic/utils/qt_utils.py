@@ -1,5 +1,5 @@
 import os
-from typing import Any, Type
+from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon
@@ -48,15 +48,15 @@ def get_most_contrasted_color(color: QColor) -> QColor:
         return QColor("#edeef2")
 
 
-class WaitCursor(object):
+class WaitCursor:
     def __enter__(self, *args: Any, **kwargs: Any) -> None:
         QApplication.setOverrideCursor(Qt.WaitCursor)
 
-    def __exit__(self, *args: Any, **kwargs: Any) -> None:
+    def __exit__(self, *args: object, **kwargs: Any) -> None:
         QApplication.restoreOverrideCursor()
 
 
-class SignalsOFF(object):
+class SignalsOFF:
     def __init__(self, *widgets: QWidget):
         self.widgets: tuple[QWidget] = widgets
 
@@ -64,13 +64,13 @@ class SignalsOFF(object):
         for widget in self.widgets:
             widget.blockSignals(True)
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(self, *args: object) -> None:
         for widget in self.widgets:
             widget.blockSignals(False)
 
 
 def named_widget(
-    widget_type: Type[QWidget], name: str, *args: Any, **kwargs: Any
+    widget_type: type[QWidget], name: str, *args: Any, **kwargs: Any
 ) -> QWidget:
     widget = widget_type(*args, **kwargs)
     widget.setObjectName(name)
@@ -78,7 +78,7 @@ def named_widget(
 
 
 def labeled(
-    widget_type: Type[QWidget], label: str, *args: Any, **kwargs: Any
+    widget_type: type[QWidget], label: str, *args: Any, **kwargs: Any
 ) -> QWidget:
     widget = QWidget()
     layout = QHBoxLayout(widget)
@@ -86,8 +86,8 @@ def labeled(
     content = widget_type(*args, **kwargs)
     layout.addWidget(label_)
     layout.addWidget(content)
-    setattr(widget, "layout", layout)
-    setattr(widget, "label", label_)
-    setattr(widget, "content", content)
+    widget.layout = layout
+    widget.label = label_
+    widget.content = content
     layout.setContentsMargins(0, 0, 0, 0)
     return widget

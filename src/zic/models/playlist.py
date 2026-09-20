@@ -1,4 +1,4 @@
-from typing import Callable, Iterator
+from collections.abc import Callable, Iterator
 
 from zic.models.song import Song
 

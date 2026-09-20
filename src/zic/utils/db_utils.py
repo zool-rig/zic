@@ -1,6 +1,7 @@
 import os
 import sqlite3
-from typing import Any, Callable, TypeAlias
+from collections.abc import Callable
+from typing import Any, TypeAlias
 
 RowFactoryOptions: TypeAlias = (
     type[sqlite3.Row] | Callable[[sqlite3.Cursor, tuple[Any, ...]], object] | None

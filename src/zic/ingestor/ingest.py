@@ -7,7 +7,7 @@ import sqlite3
 import sys
 import time
 import unicodedata
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -396,7 +396,7 @@ def get_album_discogs_data(
         if "cover_image" in r and not result["cover_url"]:
             if r["cover_image"]:
                 result["cover_url"] = r["cover_image"]
-            elif "master_url" in r and r["master_url"]:
+            elif r.get("master_url"):
                 master_response = requests.get(
                     r["master_url"],
                     headers={
@@ -407,7 +407,7 @@ def get_album_discogs_data(
                 )
                 response.raise_for_status()
                 master_data = master_response.json()
-                if "images" in master_data and master_data["images"]:
+                if master_data.get("images"):
                     for image_data in master_data["images"]:
                         if image_data.get("type") == "primary":
                             if "uri" in image_data:
@@ -858,7 +858,7 @@ def ingest(
                 counts["error"] += 1
                 LOGGER.error(f"Failed to ingest '{path.relative_to(root)}': {e!r}")
 
-        set_metadata(conn, "last_ingest", datetime.now(timezone.utc).isoformat())
+        set_metadata(conn, "last_ingest", datetime.now(UTC).isoformat())
 
         conn.commit()
 

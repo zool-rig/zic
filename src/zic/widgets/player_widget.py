@@ -561,7 +561,7 @@ class PlayerWidget(QWidget):
 
     def play(self) -> None:
         if self.current_song is None:
-            raise ValueError(f"No song to play.")
+            raise ValueError("No song to play.")
         if self.current_play_id is None:
             self.current_play_id = self.app.api.record_song_play(self.current_song)
         self.playback_widget.play()
