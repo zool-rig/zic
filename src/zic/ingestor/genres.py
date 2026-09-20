@@ -21,7 +21,6 @@ def build_similarity_matrix(
     """
     n = len(genres)
     index_by_id = {genre_id: i for i, (genre_id, _) in enumerate(genres)}
-    genre_name_by_id = {genre_id: name for genre_id, name in genres}
 
     albums_genres: dict[int, set[int]] = defaultdict(set)
     for album_id, genre_id in conn.execute(

@@ -334,28 +334,31 @@ class PlaybackWidget(QWidget):
         self.song_finished.emit()
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
-        if watched is self.time_slider and event.type() == QEvent.Type.MouseButtonPress:
-            if event.button() == Qt.MouseButton.LeftButton:
-                option = QStyleOptionSlider()
-                self.time_slider.initStyleOption(option)
-                handle_rect = self.time_slider.style().subControlRect(
-                    QStyle.ComplexControl.CC_Slider,
-                    option,
-                    QStyle.SubControl.SC_SliderHandle,
-                    self.time_slider,
-                )
-                if handle_rect.contains(event.position().toPoint()):
-                    return super().eventFilter(watched, event)
+        if (
+            watched is self.time_slider
+            and event.type() == QEvent.Type.MouseButtonPress
+            and event.button() == Qt.MouseButton.LeftButton
+        ):
+            option = QStyleOptionSlider()
+            self.time_slider.initStyleOption(option)
+            handle_rect = self.time_slider.style().subControlRect(
+                QStyle.ComplexControl.CC_Slider,
+                option,
+                QStyle.SubControl.SC_SliderHandle,
+                self.time_slider,
+            )
+            if handle_rect.contains(event.position().toPoint()):
+                return super().eventFilter(watched, event)
 
-                elapsed = QStyle.sliderValueFromPosition(
-                    self.time_slider.minimum(),
-                    self.time_slider.maximum(),
-                    int(event.position().x()),
-                    self.time_slider.width(),
-                    self.time_slider.invertedAppearance(),
-                )
-                self.seek(elapsed)
-                return True
+            elapsed = QStyle.sliderValueFromPosition(
+                self.time_slider.minimum(),
+                self.time_slider.maximum(),
+                int(event.position().x()),
+                self.time_slider.width(),
+                self.time_slider.invertedAppearance(),
+            )
+            self.seek(elapsed)
+            return True
 
         return super().eventFilter(watched, event)
 

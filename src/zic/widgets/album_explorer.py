@@ -296,10 +296,12 @@ class AlbumExplorerModel(QAbstractListModel):
             return None
         return self._albums[index.row()]
 
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
+    def rowCount(self, parent: QModelIndex | None = None) -> int:
         # All rows are available immediately: album metadata is already
         # fully in memory (see api.albums()). Only cover thumbnails are
         # loaded lazily, so filtering/sorting never has to wait on them.
+        if parent is None:
+            parent = QModelIndex()
         return 0 if parent.isValid() else len(self._albums)
 
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any | None:
@@ -380,9 +382,8 @@ class AlbumFilterProxy(QSortFilterProxyModel):
         index = self.sourceModel().index(source_row, 0, source_parent)
         album: Album = self.sourceModel().data(index, Qt.UserRole)
 
-        if self.artist_ids:
-            if album.artist.id not in self.artist_ids:
-                return False
+        if self.artist_ids and album.artist.id not in self.artist_ids:
+            return False
 
         if self.genre_ids:
             for genre in album.genres:
@@ -438,7 +439,9 @@ class AlbumCompletionModel(QAbstractListModel):
         self._entries = list(seen.items())
         self.endResetModel()
 
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
+    def rowCount(self, parent: QModelIndex | None = None) -> int:
+        if parent is None:
+            parent = QModelIndex()
         return 0 if parent.isValid() else len(self._entries)
 
     def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any | None:

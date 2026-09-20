@@ -25,6 +25,5 @@ class UrlLabel(QLabel):
             QApplication.restoreOverrideCursor()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
-        if self.clickable:
-            if event.button() == Qt.LeftButton:
-                self.clicked.emit(self.text())
+        if self.clickable and event.button() == Qt.LeftButton:
+            self.clicked.emit(self.text())

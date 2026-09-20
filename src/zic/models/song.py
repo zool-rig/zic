@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from zic.models.album import Album
@@ -46,11 +46,11 @@ class Song:
                 self.file_modified_at = datetime.fromisoformat(self.file_modified_at)
             except ValueError:
                 self.file_modified_at = datetime.fromtimestamp(
-                    float(self.file_modified_at)
+                    float(self.file_modified_at), tz=UTC
                 )
         if isinstance(self.imported_at, str):
             self.imported_at = datetime.fromisoformat(self.imported_at)
 
     def play(self) -> None:
         self.play_count += 1
-        self.last_played_at = datetime.now()
+        self.last_played_at = datetime.now(tz=UTC)

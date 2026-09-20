@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import ClassVar
 
 if "ZIC_DEVEL" not in os.environ:
     os.environ.setdefault(
@@ -16,7 +17,7 @@ class ColoredFormatter(logging.Formatter):
     reset = "\x1b[0m"
     format = "%(asctime)s - ZIC - %(name)s - %(levelname)s - %(message)s"
 
-    FORMATS = {
+    FORMATS: ClassVar = {
         logging.DEBUG: blue + format + reset,
         logging.INFO: grey + format + reset,
         logging.WARNING: yellow + format + reset,

@@ -13,7 +13,7 @@ from typing import Any
 
 import requests
 from mutagen import File as MutagenFile
-from mutagen import Tags
+from mutagen import MutagenError, Tags
 from PIL import Image
 from secret_type.typing.types import StringLike
 
@@ -292,7 +292,7 @@ def read_metadata(path: Path) -> dict[str, Any]:
 
     try:
         audio = MutagenFile(path, easy=True)
-    except Exception:
+    except MutagenError:
         audio = None
 
     if audio is not None:
@@ -409,10 +409,9 @@ def get_album_discogs_data(
                 master_data = master_response.json()
                 if master_data.get("images"):
                     for image_data in master_data["images"]:
-                        if image_data.get("type") == "primary":
-                            if "uri" in image_data:
-                                result["cover_url"] = image_data["uri"]
-                                break
+                        if image_data.get("type") == "primary" and "uri" in image_data:
+                            result["cover_url"] = image_data["uri"]
+                            break
 
         if "year" in r and not result["year"]:
             result["year"] = r["year"]
@@ -528,7 +527,7 @@ def get_embedded_picture_bytes(path: Path) -> bytes | None:
     ext = path.suffix.lower()
     try:
         audio = MutagenFile(path)
-    except Exception:
+    except Exception:  # noqa BLE001
         return None
     if audio is None or audio.tags is None:
         return None
@@ -571,7 +570,7 @@ def extract_cover_thumbnail(path: Path | str, key: StringLike, token: StringLike
         return None
     try:
         img = Image.open(io.BytesIO(raw)).convert("RGB")
-    except Exception:
+    except Exception:  # noqa BLE001
         return None
 
     img.thumbnail((COVER_MAX_SIZE, COVER_MAX_SIZE))
@@ -854,7 +853,7 @@ def ingest(
                 )
                 counts[status] += 1
                 LOGGER.info(f"Song {status} : '{path.relative_to(root)}'")
-            except Exception as e:
+            except Exception as e:  # noqa BLE001
                 counts["error"] += 1
                 LOGGER.error(f"Failed to ingest '{path.relative_to(root)}': {e!r}")
 
