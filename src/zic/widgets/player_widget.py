@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
 
 from zic.config import get_user_config
 from zic.models.album import Album
-from zic.models.artist import Artist
 from zic.models.playlist import Playlist
 from zic.models.song import Song
 from zic.resources import get_resource
