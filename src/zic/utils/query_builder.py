@@ -1,5 +1,5 @@
-from typing import Any, Self
 from collections.abc import Sequence
+from typing import Any, Self
 
 
 class QueryBuilder:

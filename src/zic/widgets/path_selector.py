@@ -1,10 +1,10 @@
-from PySide6.QtWidgets import QWidget, QFileDialog, QHBoxLayout, QLineEdit
-from PySide6.QtCore import Signal, Qt
-
 from pathlib import Path
-from typing import Callable, Any
+from typing import Any, Callable
 
-from zic.utils.qt_utils import make_toolbutton, SignalsOFF
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QFileDialog, QHBoxLayout, QLineEdit, QWidget
+
+from zic.utils.qt_utils import SignalsOFF, make_toolbutton
 
 
 class PathSelector(QWidget):

@@ -1,8 +1,8 @@
 import os
+from typing import Self
 
 from secret_type import secret
 from secret_type.typing.types import StringLike
-from typing import Self
 
 
 class DiscogsSecret:

@@ -1,49 +1,47 @@
 import sqlite3
-
-from PySide6.QtWidgets import (
-    QWidget,
-    QHBoxLayout,
-    QVBoxLayout,
-    QLineEdit,
-    QListView,
-    QLabel,
-    QGraphicsDropShadowEffect,
-    QAbstractItemView,
-    QCompleter,
-    QWidgetAction,
-)
-from PySide6.QtCore import (
-    Qt,
-    QObject,
-    QEvent,
-    QAbstractItemModel,
-    Signal,
-    QSize,
-    QAbstractListModel,
-    QModelIndex,
-    QSortFilterProxyModel,
-    QTimer,
-    Slot,
-    QThread,
-)
-from PySide6.QtGui import QCursor, QColor, QWheelEvent, QAction
-
 from enum import Enum
 from typing import Any
 
-from zic.utils.qt_utils import make_toolbutton, set_label_font_size, SignalsOFF
-from zic.utils.query_builder import QueryBuilder
-from zic.widgets.rules import VRule
+from PySide6.QtCore import (
+    QAbstractItemModel,
+    QAbstractListModel,
+    QEvent,
+    QModelIndex,
+    QObject,
+    QSize,
+    QSortFilterProxyModel,
+    Qt,
+    QThread,
+    QTimer,
+    Signal,
+    Slot,
+)
+from PySide6.QtGui import QAction, QColor, QCursor, QWheelEvent
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QCompleter,
+    QGraphicsDropShadowEffect,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListView,
+    QVBoxLayout,
+    QWidget,
+    QWidgetAction,
+)
+
+from zic.api import ZicApi
+from zic.config import get_app_config, get_user_config
 from zic.models.album import Album, AlbumCover
-from zic.widgets.cover_thumbnail import CoverThumbnail, DEFAULT_COVER
 from zic.models.artist import Artist
 from zic.models.genre import Genre
-from zic.widgets.toggle_switch import ToggleSwitch
-from zic.widgets.strong_menu import StrongMenu
-from zic.config import get_user_config, get_app_config
-from zic.api import ZicApi
+from zic.utils.qt_utils import SignalsOFF, make_toolbutton, set_label_font_size
+from zic.utils.query_builder import QueryBuilder
+from zic.widgets.cover_thumbnail import DEFAULT_COVER, CoverThumbnail
+from zic.widgets.rules import VRule
 from zic.widgets.sound_wave import SoundWave
-
+from zic.widgets.strong_menu import StrongMenu
+from zic.widgets.toggle_switch import ToggleSwitch
 
 ALBUM_THUMBNAIL_SIZE = 140
 ALBUM_ITEM_SIZE = QSize(160, 220)

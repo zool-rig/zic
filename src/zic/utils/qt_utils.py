@@ -1,16 +1,15 @@
 import os
-
 from typing import Any, Type
 
-from PySide6.QtWidgets import (
-    QToolButton,
-    QLabel,
-    QApplication,
-    QWidget,
-    QHBoxLayout,
-)
-from PySide6.QtGui import QIcon, QColor
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QIcon
+from PySide6.QtWidgets import (
+    QApplication,
+    QHBoxLayout,
+    QLabel,
+    QToolButton,
+    QWidget,
+)
 
 from zic.resources import get_resource
 

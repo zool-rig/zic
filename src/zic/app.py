@@ -1,23 +1,23 @@
 import importlib.metadata
 
-from PySide6.QtWidgets import *
-from PySide6.QtCore import Qt, QProcess, QEvent, QObject, QSize, QTimer
+from PySide6.QtCore import QEvent, QObject, QProcess, QSize, Qt, QTimer
 from PySide6.QtGui import QKeyEvent
+from PySide6.QtWidgets import *
 
 from zic.api import ZicApi
-from zic.config import get_user_config, get_app_config
-from zic.utils.qt_utils import make_toolbutton, SignalsOFF
-from zic.widgets.rules import VRule, HRule
-from zic.widgets.artists_filter_widget import ArtistsFilterWidget
-from zic.widgets.genres_filter_widget import GenresFilterWidget
-from zic.widgets.album_explorer import AlbumExplorer
-from zic.widgets.player_widget import PlayerWidget
+from zic.config import get_app_config, get_user_config
 from zic.models.album import Album, AlbumCover
-from zic.widgets.album_view import AlbumView
-from zic.models.song import Song
 from zic.models.artist import Artist
+from zic.models.song import Song
 from zic.resources import get_resource
+from zic.utils.qt_utils import SignalsOFF, make_toolbutton
+from zic.widgets.album_explorer import AlbumExplorer
+from zic.widgets.album_view import AlbumView
+from zic.widgets.artists_filter_widget import ArtistsFilterWidget
 from zic.widgets.dyn_label import DynLabel
+from zic.widgets.genres_filter_widget import GenresFilterWidget
+from zic.widgets.player_widget import PlayerWidget
+from zic.widgets.rules import HRule, VRule
 
 
 class ZicUI(QDialog):

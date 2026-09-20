@@ -1,11 +1,11 @@
-from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QVBoxLayout, QScrollArea
-from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
+from zic.api import ZicApi
 from zic.models.album import Album, AlbumCover
 from zic.models.song import Song
 from zic.utils.qt_utils import make_toolbutton, set_label_font_size
-from zic.widgets.cover_thumbnail import CoverThumbnail, DEFAULT_COVER
-from zic.api import ZicApi
+from zic.widgets.cover_thumbnail import DEFAULT_COVER, CoverThumbnail
 from zic.widgets.sound_wave import SoundWave
 
 

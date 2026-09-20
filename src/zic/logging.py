@@ -1,6 +1,5 @@
-import os
 import logging
-
+import os
 
 if "ZIC_DEVEL" not in os.environ:
     os.environ.setdefault(

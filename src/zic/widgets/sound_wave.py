@@ -1,6 +1,6 @@
 import random
 
-from PySide6.QtCore import Qt, QTimer, QSize
+from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter, QPaintEvent
 from PySide6.QtWidgets import QWidget
 

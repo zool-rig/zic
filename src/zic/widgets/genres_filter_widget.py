@@ -1,10 +1,10 @@
-from PySide6.QtWidgets import QWidget, QListWidgetItem
-from PySide6.QtCore import Qt
-
 from typing import Self
 
-from zic.widgets.filter_list_widget import FilterListWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QListWidgetItem, QWidget
+
 from zic.models.genre import Genre
+from zic.widgets.filter_list_widget import FilterListWidget
 
 
 class GenreItem(QListWidgetItem):

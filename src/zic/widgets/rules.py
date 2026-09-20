@@ -1,6 +1,6 @@
-from PySide6.QtWidgets import QFrame
-
 from typing import Any
+
+from PySide6.QtWidgets import QFrame
 
 
 class HRule(QFrame):

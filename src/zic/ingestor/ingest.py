@@ -1,24 +1,24 @@
-import sys
-import re
+import hashlib
+import io
+import json
 import os
+import re
 import sqlite3
+import sys
 import time
 import unicodedata
-import requests
-import json
-import io
-import hashlib
-
-from pathlib import Path
-from mutagen import File as MutagenFile, Tags
-from typing import Any
-from secret_type.typing.types import StringLike
-from PIL import Image
 from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import requests
+from mutagen import File as MutagenFile
+from mutagen import Tags
+from PIL import Image
+from secret_type.typing.types import StringLike
 
 from zic.ingestor.discogs_secret import DiscogsSecret, InvalidDiscogsSecrets
 from zic.logging import get_logger
-
 
 SCHEMA_PATH = Path(__file__).parent.parent / "schema.sql"
 

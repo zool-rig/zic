@@ -1,14 +1,13 @@
-import sqlite3
-import logging
-import numpy as np
 import json
-
-from pathlib import Path
+import logging
+import sqlite3
 from collections import defaultdict
 from itertools import combinations
+from pathlib import Path
+
+import numpy as np
 
 from zic.logging import get_logger
-
 
 DEFAULT_DIMENSIONS = 8
 LOGGER = get_logger("Genre Pos")

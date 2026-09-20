@@ -1,25 +1,25 @@
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QIcon
+from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
     QHBoxLayout,
     QLabel,
+    QSizePolicy,
     QSlider,
     QStyle,
     QStyleOptionSlider,
-    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
 )
-from PySide6.QtCore import Qt, Signal, QTimer, QEvent, QObject, QUrl
-from PySide6.QtGui import QIcon
-from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput, QMediaDevices
 
-from zic.utils.qt_utils import make_toolbutton
-from zic.models.song import Song
+from zic.config import get_user_config
 from zic.models.album import Album
 from zic.models.artist import Artist
 from zic.models.playlist import Playlist
-from zic.widgets.cover_thumbnail import CoverThumbnail
-from zic.config import get_user_config
+from zic.models.song import Song
 from zic.resources import get_resource
+from zic.utils.qt_utils import make_toolbutton
+from zic.widgets.cover_thumbnail import CoverThumbnail
 from zic.widgets.url_label import UrlLabel
 
 

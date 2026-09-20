@@ -1,6 +1,6 @@
-from pathlib import Path
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
 from zic.models.album import Album
 from zic.models.genre import Genre

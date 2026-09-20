@@ -1,20 +1,20 @@
-from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLineEdit,
-    QLabel,
-    QMenu,
-    QCompleter,
-    QAbstractItemView,
-    QListWidget,
-)
 from PySide6.QtCore import QEvent, Qt
-from PySide6.QtGui import QIcon, QAction, QCursor
+from PySide6.QtGui import QAction, QCursor, QIcon
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QCompleter,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QMenu,
+    QVBoxLayout,
+    QWidget,
+)
 
-from zic.utils.qt_utils import make_toolbutton, set_label_font_size
-from zic.resources import get_resource
 from zic.config import get_user_config
+from zic.resources import get_resource
+from zic.utils.qt_utils import make_toolbutton, set_label_font_size
 
 
 class FilterListWidget(QWidget):

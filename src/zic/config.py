@@ -1,16 +1,15 @@
-import os
-import toml
 import json
 import logging
-
+import os
 from dataclasses import dataclass, field
-from appdirs import user_data_dir, user_config_dir
-from pathlib import Path
 from enum import Enum
+from pathlib import Path
+
+import toml
+from appdirs import user_config_dir, user_data_dir
 from PySide6.QtCore import Qt
 
 from zic.logging import get_logger
-
 
 LOGGER = get_logger("Config")
 APP_CONFIG_PATH = Path(user_config_dir("Zic")) / "app_config.toml"

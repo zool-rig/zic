@@ -1,6 +1,6 @@
-from PySide6.QtWidgets import QLabel, QApplication
-from PySide6.QtCore import Qt, QEvent, Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QMouseEvent
+from PySide6.QtWidgets import QApplication, QLabel
 
 
 class UrlLabel(QLabel):

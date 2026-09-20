@@ -1,21 +1,19 @@
 import sqlite3
 import time
-
 from collections import defaultdict
-from typing import Any
-from enum import Enum
 from datetime import datetime
+from enum import Enum
+from typing import Any
 
+from zic.config import get_app_config
+from zic.logging import get_logger
+from zic.models.album import Album, AlbumCover
 from zic.models.artist import Artist
 from zic.models.genre import Genre
-from zic.models.album import Album, AlbumCover
-from zic.models.song import Song
 from zic.models.playlist import Playlist
-from zic.config import get_app_config
-from zic.utils.query_builder import QueryBuilder
+from zic.models.song import Song
 from zic.utils.db_utils import RowFactory
-from zic.logging import get_logger
-
+from zic.utils.query_builder import QueryBuilder
 
 SONG_CHUNK_LIMIT = 50
 LOGGER = get_logger("API")

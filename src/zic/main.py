@@ -1,7 +1,7 @@
 import sys
-import click
-
 from pathlib import Path
+
+import click
 
 
 def first_launch() -> None:
@@ -15,7 +15,8 @@ def first_launch() -> None:
 
 def launch_ui() -> None:
     from PySide6.QtWidgets import QApplication
-    from zic.app import ZicUI, GlobalKeyFilter
+
+    from zic.app import GlobalKeyFilter, ZicUI
     from zic.config import app_config_exists
 
     qapp = QApplication(sys.argv)

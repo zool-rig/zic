@@ -1,14 +1,14 @@
-from PySide6.QtWidgets import *
-from PySide6.QtCore import *
-from PySide6.QtGui import *
-
 from pathlib import Path
 
+from PySide6.QtCore import *
+from PySide6.QtGui import *
+from PySide6.QtWidgets import *
+
+from zic.config import AppConfig
+from zic.utils.db_utils import is_valid_sqlite_file
+from zic.utils.qt_utils import set_label_font_size
 from zic.widgets.path_selector import PathSelector
 from zic.widgets.rules import HRule
-from zic.utils.qt_utils import set_label_font_size
-from zic.utils.db_utils import is_valid_sqlite_file
-from zic.config import AppConfig
 
 
 class FirstLaunchDialog(QDialog):

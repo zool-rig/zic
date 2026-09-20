@@ -1,6 +1,6 @@
-from PySide6.QtCore import Signal, Qt
-from PySide6.QtWidgets import QFrame, QLabel, QHBoxLayout, QWidget
-from PySide6.QtGui import QColor, QPainter, QPaintEvent, QMouseEvent, QPen
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPen
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QWidget
 
 
 class _ToggleSwitch(QFrame):
