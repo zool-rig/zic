@@ -100,6 +100,7 @@ class FilterTagsContainer(QWidget):
         layout.setAlignment(Qt.AlignVCenter)
         self.setLayout(layout)
         self.setFixedHeight(32)
+        self.hide()
 
     def add_tag(self, tag_id: str, label: str, on_clear_callback) -> None:
         """Add a new tag or update existing one."""
@@ -108,6 +109,8 @@ class FilterTagsContainer(QWidget):
             tag.clear_clicked.connect(on_clear_callback)
             self.tags[tag_id] = tag
             self.layout().addWidget(tag)
+        if self.isHidden():
+            self.show()
 
     def remove_tag(self, tag_id: str) -> None:
         """Remove a tag by id."""
@@ -115,6 +118,8 @@ class FilterTagsContainer(QWidget):
             tag = self.tags.pop(tag_id)
             self.layout().removeWidget(tag)
             tag.deleteLater()
+        if not self.isHidden() and not self.tags:
+            self.hide()
 
     def clear_all(self) -> None:
         """Remove all tags."""
@@ -467,6 +472,7 @@ class AlbumCompletionModel(QAbstractListModel):
 class AlbumExplorerView(QListView):
     def __init__(self) -> None:
         super().__init__()
+        self.setObjectName("AlbumExplorerView")
         self.setUniformItemSizes(True)
         self.setFlow(QListView.LeftToRight)
         self.setResizeMode(QListView.Adjust)

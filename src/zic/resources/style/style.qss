@@ -11,7 +11,7 @@ QLabel {
     background-color: transparent;
 }
 
-QToolButton, QLineEdit {
+QToolButton, QLineEdit, QPushButton {
     padding: 5px;
     background-color: #151B24;
     border-radius: 8px;
@@ -74,8 +74,11 @@ QScrollBar::add-page, QScrollBar::sub-page {
     background-color: transparent;
 }
 
-QAbstractItemView {
+QAbstractItemView, QScrollArea {
     outline: none;
+    padding: 4px;
+    border-radius: 8px;
+    border: 1px solid #2A3342;
 }
 
 QAbstractItemView::item {
@@ -144,6 +147,7 @@ QSlider::handle:horizontal::pressed {
 #ContainerFrame {
     border-radius: 8px;
     border: 1px solid #2A3342;
+    padding: 2px;
 }
 
 QMenu {
@@ -163,9 +167,28 @@ QMenu::item::selected {
 
 QMenuBar::item {
     padding: 4px;
-    border-radius: 4px;
+    padding-bottom: 6px;
+    border-radius: 4px
 }
 
 QMenuBar::item::selected {
     background-color: #1C2330;
+}
+
+#LabelAction {
+    padding-bottom: 5px;
+}
+
+#AlbumExplorerView::item {
+    padding-bottom: 5px;
+}
+
+#AlbumExplorerView::item::hover {
+    background-color: transparent;
+}
+
+#AlbumExplorerView::item::selected {
+    background-color: #1C2330;
+    border-radius: 8px;
+    
 }

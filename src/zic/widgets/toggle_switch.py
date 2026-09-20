@@ -36,24 +36,24 @@ class _ToggleSwitch(QFrame):
         painter.setPen(Qt.PenStyle.NoPen)
 
         # Background
-        painter.setBrush(QColor("#c5dd6f" if self.checked else "#588591"))
-        painter.drawRect(2, 2, 40, 20)
+        painter.setBrush(QColor("#00BFAE" if self.checked else "#151B24"))
+        painter.drawRoundedRect(2, 2, 40, 20, 6, 6)
 
         # Background border
-        painter.setPen(QPen(QColor("#262624"), 2))
+        painter.setPen(QPen(QColor("#2A3342"), 2))
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRect(2, 2, 40, 20)
+        painter.drawRoundedRect(2, 2, 40, 20, 6, 6)
 
         # Cursor
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor("#95aa49" if self.checked else "#79afbd"))
+        painter.setBrush(QColor("#35F0E0" if self.checked else "#1C2330"))
         pos_x = 25 if self.checked else 5
-        painter.drawRect(pos_x, 5, 14, 14)
+        painter.drawRoundedRect(pos_x, 5, 14, 14, 4, 4)
 
         # Cursor border
-        painter.setPen(QPen(QColor("#262624"), 2))
+        painter.setPen(QPen(QColor("#2A3342"), 2))
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRect(pos_x, 5, 14, 14)
+        painter.drawRoundedRect(pos_x, 5, 14, 14, 4, 4)
 
         return super().paintEvent(event)
 

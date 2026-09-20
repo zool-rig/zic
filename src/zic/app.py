@@ -2,7 +2,19 @@ import importlib.metadata
 
 from PySide6.QtCore import QEvent, QObject, QProcess, QSize, Qt, QTimer
 from PySide6.QtGui import QKeyEvent
-from PySide6.QtWidgets import *
+from PySide6.QtWidgets import (
+    QVBoxLayout,
+    QHBoxLayout,
+    QDialog,
+    QMenuBar,
+    QStackedWidget,
+    QSplitter,
+    QWidgetAction,
+    QApplication,
+    QFrame,
+    QToolButton,
+    QMessageBox,
+)
 
 from zic.api import ZicApi
 from zic.config import get_app_config, get_user_config
@@ -104,7 +116,7 @@ class ZicUI(QDialog):
 
     def init_menu_bar(self) -> None:
         self.database_menu = self.menu_bar.addMenu("Database")
-        last_ingest_lbl = DynLabel(
+        last_ingest_lbl = named_widget(DynLabel, "LabelAction",
             lambda: self.api.last_ingest_date().strftime("%d/%m/%Y, %H:%M:%S"),
             prefix="Last scan : ",
         )
@@ -138,6 +150,7 @@ class ZicUI(QDialog):
         self.random_btn_h_layout.addWidget(self.play_random_btn)
         self.side_bar_v_layout.addLayout(self.reload_btn_h_layout)
         self.reload_btn_h_layout.addWidget(self.reload_btn)
+        self.side_bar_v_layout.addWidget(HRule())
         self.side_bar_v_layout.addWidget(self.filter_tab_frame)
         self.filter_tab_frame.setLayout(self.filter_tab_v_layout)
         self.filter_tab_v_layout.addWidget(self.toggle_artists_btn)

@@ -412,7 +412,7 @@ class VolumeSlider(QWidget):
             "icons/mute.png" if get_user_config().muted else "icons/volume.png",
             tooltip="Mute",
             checkable=True,
-            icon_size=QSize(12, 12),
+            icon_size=QSize(13, 13),
             name="SmallToolButton",
         )
         self.slider = QSlider(Qt.Horizontal)
