@@ -31,6 +31,71 @@ PREFETCH_MARGIN_ROWS = 30
 PREFETCH_DEBOUNCE_MS = 80
 
 
+class FilterTag(QWidget):
+    """A small tag widget with a label and a close button."""
+    clear_clicked = Signal()
+
+    def __init__(self, label: str, parent=None) -> None:
+        super().__init__(parent)
+        self.label_text = label
+        self.init_ui()
+
+    def init_ui(self) -> None:
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(6, 2, 2, 2)
+        layout.setSpacing(4)
+
+        label = QLabel(self.label_text)
+        close_btn = make_toolbutton(
+            "icons/close.png",
+            tooltip="Remove filter",
+        )
+        close_btn.clicked.connect(self.clear_clicked.emit)
+
+        layout.addWidget(label)
+        layout.addWidget(close_btn)
+
+
+class FilterTagsContainer(QWidget):
+    """Container for filter tags."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.tags: dict[str, FilterTag] = {}
+        self.init_ui()
+
+    def init_ui(self) -> None:
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+        self.setLayout(layout)
+
+    def add_tag(self, tag_id: str, label: str, on_clear_callback) -> None:
+        """Add a new tag or update existing one."""
+        if tag_id not in self.tags:
+            tag = FilterTag(label, self)
+            tag.clear_clicked.connect(on_clear_callback)
+            self.tags[tag_id] = tag
+            self.layout().addWidget(tag)
+
+    def remove_tag(self, tag_id: str) -> None:
+        """Remove a tag by id."""
+        if tag_id in self.tags:
+            tag = self.tags.pop(tag_id)
+            self.layout().removeWidget(tag)
+            tag.deleteLater()
+
+    def clear_all(self) -> None:
+        """Remove all tags."""
+        tag_ids = list(self.tags.keys())
+        for tag_id in tag_ids:
+            self.remove_tag(tag_id)
+
+    def has_tags(self) -> bool:
+        """Check if there are any tags."""
+        return len(self.tags) > 0
+
+
 class AlbumItemWidget(QWidget):
     def __init__(self, album: Album, cover: AlbumCover | None = None) -> None:
         super().__init__()
@@ -509,6 +574,7 @@ class AlbumExplorer(QWidget):
         # self.filter_btn = None
         self.sort_btn = None
         # self.settings_btn = None
+        self.tags_container = None
         self.model = None
         self.proxy = None
         self.view = None
@@ -522,6 +588,10 @@ class AlbumExplorer(QWidget):
         # Background cover loading
         self.cover_thread = None
         self.cover_worker = None
+        
+        # Current filters
+        self._current_artists: list[Artist] = []
+        self._current_genres: list[Genre] = []
 
         self.init_ui()
 
@@ -543,6 +613,7 @@ class AlbumExplorer(QWidget):
         # self.filter_btn = make_toolbutton("icons/filter.png", tooltip="Filters")
         self.sort_btn = make_toolbutton("icons/sort.png", tooltip="Sorting")
         # self.settings_btn = make_toolbutton("icons/burger-bar.png", tooltip="Settings")
+        self.tags_container = FilterTagsContainer()
         self.model = AlbumExplorerModel(self.api)
         self.completion_model = AlbumCompletionModel(self.model)
         self.proxy = AlbumFilterProxy()
@@ -583,6 +654,7 @@ class AlbumExplorer(QWidget):
         self.main_v_layout.addWidget(self.title_lbl)
         self.main_v_layout.addLayout(self.top_h_layout)
         self.top_h_layout.addWidget(self.search_edt)
+        self.top_h_layout.addWidget(self.tags_container)
         # self.top_h_layout.addWidget(self.filter_btn)
         self.top_h_layout.addWidget(self.sort_btn)
         # self.top_h_layout.addWidget(self.settings_btn)
@@ -635,14 +707,44 @@ class AlbumExplorer(QWidget):
         )
 
     def set_artist_filters(self, artists: list[Artist]) -> None:
+        self._current_artists = artists
         self.proxy.genre_ids = set()
         self.proxy.artist_ids = {artist.id for artist in artists}
         self.proxy.setFilterFixedString(self.search_edt.text())
+        self._update_filter_tags()
+
+    def remove_artist_filter(self, artist: Artist) -> None:
+        artists = [a for a in self._current_artists if a != artist]
+        self.set_artist_filters(artists)
 
     def set_genre_filters(self, genres: list[Genre]) -> None:
+        self._current_genres = genres
         self.proxy.artist_ids = set()
         self.proxy.genre_ids = {genre.id for genre in genres}
         self.proxy.setFilterFixedString(self.search_edt.text())
+        self._update_filter_tags()
+
+    def remove_genre_filter(self, genre: Genre) -> None:
+        genres = [g for g in self._current_genres if g != genre]
+        self.set_genre_filters(genres)
+
+    def _update_filter_tags(self) -> None:
+        """Update the filter tags display based on current filters."""
+        self.tags_container.clear_all()
+        
+        for artist in self._current_artists:
+            self.tags_container.add_tag(
+                f"artist_{artist.id}",
+                f"Artist: {artist.name}",
+                lambda a=artist: self.remove_artist_filter(a),
+            )
+        
+        for genre in self._current_genres:
+            self.tags_container.add_tag(
+                f"genre_{genre.id}",
+                f"Genre: {genre.name}",
+                lambda g=genre: self.remove_genre_filter(g),
+            )
 
     def show_sort_menu(self) -> None:
         menu = StrongMenu(self)
