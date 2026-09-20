@@ -1,10 +1,10 @@
 import sqlite3
-import logging
 import time
 
 from collections import defaultdict
 from typing import Any
 from enum import Enum
+from datetime import datetime
 
 from zic.models.artist import Artist
 from zic.models.genre import Genre
@@ -394,3 +394,14 @@ class ZicApi:
             f"{time.perf_counter() - start_time:.3f}s"
         )
         return artists
+
+    def get_metadata(self, key: str) -> str | None:
+        row = self.connection.execute(
+            "SELECT value FROM metadata WHERE key = ?", (key,)
+        ).fetchone()
+        return row[0] if row else None
+
+    def last_ingest_date(self) -> datetime | None:
+        last_ingest = self.get_metadata("last_ingest")
+        if last_ingest:
+            return datetime.fromisoformat(last_ingest)

@@ -41,7 +41,7 @@ CREATE TABLE covers_thumbnails (
 CREATE TABLE genres (
     id         INTEGER PRIMARY KEY,
     name       TEXT NOT NULL UNIQUE,
-    position   TEXT   -- proximity vector, JSON: "[0.12, -0.4, ...]" (computed offline via Last.fm)
+    position   TEXT NOt NULL DEFAULT "[]"  -- proximity vector, JSON: "[0.12, -0.4, ...]" (computed offline via Last.fm)
 );
 
 CREATE TABLE album_genres (
@@ -127,6 +127,11 @@ CREATE TABLE song_artists (
     PRIMARY KEY (song_id, artist_id, role),
     FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE,
     FOREIGN KEY (artist_id) REFERENCES artists(id)
+);
+
+CREATE TABLE IF NOT EXISTS metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT
 );
 
 -- Useful indexes for frequent lookups/joins

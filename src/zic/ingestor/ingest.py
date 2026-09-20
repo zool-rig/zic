@@ -14,6 +14,7 @@ from mutagen import File as MutagenFile, Tags
 from typing import Any
 from secret_type.typing.types import StringLike
 from PIL import Image
+from datetime import datetime, timezone
 
 from zic.ingestor.discogs_secret import DiscogsSecret, InvalidDiscogsSecrets
 from zic.logging import get_logger
@@ -395,6 +396,16 @@ def compute_hash(path: Path) -> str:
     return h.hexdigest()
 
 
+def set_metadata(conn, key: str, value: str):
+    conn.execute(
+        """
+        INSERT INTO metadata (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """,
+        (key, value)
+    )
+    conn.commit()
+
 # ---------------------------------------------------------------------------
 # Get-or-create helpers
 # ---------------------------------------------------------------------------
@@ -759,6 +770,8 @@ def ingest(
             except Exception as e:
                 counts["error"] += 1
                 LOGGER.error(f"Failed to ingest '{path.relative_to(root)}': {e!r}")
+
+        set_metadata(conn, "last_ingest", datetime.now(timezone.utc).isoformat())
 
         conn.commit()
 

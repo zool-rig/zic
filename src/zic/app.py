@@ -5,7 +5,7 @@ from PySide6.QtCore import *
 from PySide6.QtGui import *
 
 from zic.api import ZicApi
-from zic.config import get_user_config
+from zic.config import get_user_config, get_app_config
 from zic.utils.qt_utils import make_toolbutton, SignalsOFF
 from zic.widgets.rules import VRule, HRule
 from zic.widgets.artists_filter_widget import ArtistsFilterWidget
@@ -17,6 +17,7 @@ from zic.widgets.album_view import AlbumView
 from zic.models.song import Song
 from zic.models.artist import Artist
 from zic.resources import get_resource
+from zic.widgets.dyn_label import DynLabel
 
 
 class ZicUI(QDialog):
@@ -33,6 +34,7 @@ class ZicUI(QDialog):
         self.filter_tab_v_layout = None
 
         # Widgets
+        self.menu_bar = None
         self.play_random_btn = None
         self.reload_btn = None
         self.filter_tab_frame = None
@@ -46,11 +48,22 @@ class ZicUI(QDialog):
         self.album_view = None
         self.player_widget = None
 
+        # Menus
+        self.database_menu = None
+        self.check_for_new_songs_action = None
+        self.rescan_action = None
+        self.help_menu = None
+        self.about_action = None
+        self.compute_genres_action = None
+
+        self.ingest_process = QProcess(self)
+
         self.init_ui()
 
     def init_ui(self) -> None:
         self.init_layouts()
         self.init_widgets()
+        self.init_menu_bar()
         self.set_layout()
         self.set_connections()
         self.set_default()
@@ -69,6 +82,7 @@ class ZicUI(QDialog):
         self.filter_tab_v_layout = QVBoxLayout()
 
     def init_widgets(self) -> None:
+        self.menu_bar = QMenuBar()
         self.play_random_btn = make_toolbutton(
             "icons/shuffle.png", tooltip="Play random"
         )
@@ -86,9 +100,29 @@ class ZicUI(QDialog):
         self.genre_filter_widget = GenresFilterWidget(self)
         self.album_explorer = AlbumExplorer(self.api)
         self.album_view = AlbumView(self.api)
-        self.player_widget = PlayerWidget(self)  # TODO replace by api if possible
+        self.player_widget = PlayerWidget(self)
+
+    def init_menu_bar(self) -> None:
+        self.database_menu = self.menu_bar.addMenu("Database")
+        last_ingest_lbl = DynLabel(lambda: self.api.last_ingest_date().strftime("%d/%m/%Y, %H:%M:%S"), prefix="Last scan : ")
+        last_ingest_lbl.setFixedWidth(200)
+        action = QWidgetAction(self.database_menu)
+        action.setDefaultWidget(last_ingest_lbl)
+        self.database_menu.addAction(action)
+
+        self.check_for_new_songs_action = self.database_menu.addAction("Check for new songs")
+        self.check_for_new_songs_action.triggered.connect(self.check_for_new_songs)
+        self.rescan_action = self.database_menu.addAction("Full rescan")
+        self.rescan_action.triggered.connect(lambda: self.check_for_new_songs(rescan=True))
+        self.compute_genres_action = self.database_menu.addAction("Compute genre positions")
+        self.compute_genres_action.triggered.connect(self.compute_genres)
+
+        self.help_menu = self.menu_bar.addMenu("Help")
+        self.about_action = self.help_menu.addAction("About")
+        self.about_action.triggered.connect(self.show_about_dialog)
 
     def set_layout(self) -> None:
+        self.main_v_layout.addWidget(self.menu_bar)
         self.main_v_layout.addLayout(self.main_h_layout)
         self.main_h_layout.addLayout(self.side_bar_v_layout)
         self.side_bar_v_layout.addLayout(self.random_btn_h_layout)
@@ -128,25 +162,30 @@ class ZicUI(QDialog):
         self.player_widget.song_url_clicked.connect(self.jump_to_song)
         self.player_widget.album_url_clicked.connect(self.jump_to_album)
         self.player_widget.artist_url_clicked.connect(self.jump_to_artists)
+        self.ingest_process.finished.connect(self.on_ingest_process_finished)
+        self.ingest_process.errorOccurred.connect(self.on_ingest_process_failed)
 
     def set_default(self) -> None:
         self.setWindowFlags(Qt.Window)
         self.setWindowTitle(f"ZIC - {importlib.metadata.version('zic')}")
 
         for layout, alignment in (
-            (self.main_v_layout, Qt.AlignTop),
             (self.main_h_layout, Qt.AlignLeft),
             (self.side_bar_v_layout, Qt.AlignTop),
             (self.random_btn_h_layout, Qt.AlignCenter),
             (self.filter_tab_v_layout, Qt.AlignTop),
         ):
             layout.setAlignment(alignment)
+        
+        # Don't align main_v_layout to top; let it expand to fill available space
+        self.main_v_layout.setStretchFactor(self.main_h_layout, 1)
 
         self.filter_stacked_widget.hide()
         self.album_view.hide()
         self.h_splitter.setStretchFactor(0, 1)
         self.h_splitter.setStretchFactor(1, 3)
         self.h_splitter.setStretchFactor(2, 1)
+        self.resize(QSize(1300, 760))
 
     def set_style_sheet(self) -> None:
         qss_path = get_resource("style/style.qss")
@@ -190,8 +229,21 @@ class ZicUI(QDialog):
 
     def reload(self) -> None:
         self.api.invalidate_caches()
+        
+        # Clear and refill album explorer
+        self.album_explorer.fill()
+        
+        # Clear artist and genre filters
         self.artist_filter_widget.clear()
         self.genre_filter_widget.clear()
+        
+        # If a filter is visible, refill it immediately
+        if self.filter_stacked_widget.isVisible():
+            current_index = self.filter_stacked_widget.currentIndex()
+            if current_index == 0:
+                self.artist_filter_widget.fill()
+            else:
+                self.genre_filter_widget.fill()
 
     def on_album_selected(self, album: Album, cover: AlbumCover | None) -> None:
         self.album_view.show()
@@ -281,6 +333,63 @@ class ZicUI(QDialog):
 
     def jump_to_artists(self, artists: list[Artist]) -> None:
         self.artist_filter_widget.select_artists(artists)
+
+    def show_about_dialog(self) -> None:
+        meta = importlib.metadata.metadata("zic")
+        keywords = meta.get_all('Keywords', [])
+
+        release_date = None
+        for keyword in keywords:
+            if keyword.startswith("release-date:"):
+                release_date = keyword.split(":")[-1]
+                break
+
+        version = importlib.metadata.version('zic')
+        description = meta['summary']
+
+        about_message = f"""
+        <div style="text-align:center;">
+            <h2 style="margin-bottom:0;">ZIC</h2>
+            <p style="color:gray; margin-top:2px;">Version {version}</p>
+            <p>{description}</p>
+        """
+
+        if release_date is not None:
+            about_message += f'<p style="font-size:small; color:gray;">Release date: {release_date}</p>'
+
+        about_message += "</div>"
+
+        QMessageBox.about(
+            self,
+            "About",
+            about_message
+        )
+
+    def check_for_new_songs(self, rescan: bool = False) -> None:
+        args = ["ingest", str(get_app_config().root_dir), "--db", str(get_app_config().db_path)]
+        if rescan:
+            args.append("--rescan")
+        self.ingest_process.start("zic", args)
+
+    def on_ingest_process_finished(self, exit_code: int, exit_status: QProcess.ExitStatus) -> None:
+        if exit_code == 0 and exit_status == QProcess.ExitStatus.NormalExit:
+            QMessageBox.information(
+                self,
+                "Database",
+                "Database scan finished"
+            )
+            self.reload()
+
+    def on_ingest_process_failed(self, error: QProcess.ProcessError) -> None:
+        QMessageBox.warning(
+            self,
+            "Database",
+            f"Database scan failed : {error.name}"
+            f"\n{self.ingest_process.errorString()}"
+        )
+
+    def compute_genres(self) -> None:
+        self.ingest_process.start("zic", ["compute-genres", str(get_app_config().db_path)])
 
 
 class GlobalKeyFilter(QObject):

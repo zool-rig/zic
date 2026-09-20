@@ -15,8 +15,13 @@
 * [X] Hotkeys
 * [X] Player widget clickable labels song, album, artist
 * [ ] Key bindings editor
-* [ ] Finish reload
-    * [ ] Update artist and genres list if visible
-* [ ] Filter empty artists
+* [X] Finish reload
+* [ ] Filter empty artists ?
 * [ ] Filter empty genres ?
 * [ ] Adding artist and genre filters add deletable tags next to the explorer search bar
+* [X] Run ingest from ui
+* [X] about dialog
+* [ ] Finish style
+* [X] Default size
+* [ ] Clean and organize imports
+* [ ] Better cover place holder icon
