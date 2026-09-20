@@ -36,12 +36,26 @@ UNKNOWN_ALBUM = "Unknown Album"
 # canonical Unknown fallback so they don't create near-duplicate placeholder
 # rows in the DB.
 ARTIST_PLACEHOLDER_TOKENS = {
-    "unknown", "unknown artist", "various", "various artists",
-    "inconnu", "artiste inconnu", "n/a", "na", "none", "no artist",
+    "unknown",
+    "unknown artist",
+    "various",
+    "various artists",
+    "inconnu",
+    "artiste inconnu",
+    "n/a",
+    "na",
+    "none",
+    "no artist",
 }
 ALBUM_PLACEHOLDER_TOKENS = {
-    "unknown", "unknown album", "inconnu", "album inconnu",
-    "n/a", "na", "none", "no album",
+    "unknown",
+    "unknown album",
+    "inconnu",
+    "album inconnu",
+    "n/a",
+    "na",
+    "none",
+    "no album",
 }
 
 YEAR_RE = re.compile(r"(\d{4})")
@@ -55,9 +69,20 @@ GENRE_SPLIT_RE = re.compile(r"\s*;|,\s*")
 # not actual musical genres. Necessarily incomplete: catches known recurring
 # junk, not every possible arbitrary tag (see ingest.py's docstring).
 GENRE_DENYLIST = {
-    "wishlist", "vinyl", "favourite albums", "favorite albums", "albums",
-    "albums i have listened", "compilation", "long", "joy", "fun",
-    "wikipedia", "masterpiece", "remix", "chill",
+    "wishlist",
+    "vinyl",
+    "favourite albums",
+    "favorite albums",
+    "albums",
+    "albums i have listened",
+    "compilation",
+    "long",
+    "joy",
+    "fun",
+    "wikipedia",
+    "masterpiece",
+    "remix",
+    "chill",
 }
 GENRE_DENYLIST_PATTERNS = [
     re.compile(r"^best of \d{4}$", re.IGNORECASE),
@@ -69,21 +94,17 @@ DISCOGS_RATE_LIMIT_WAIT_SECONDS = 60.0
 DISCOGS_MAX_ATTEMPTS = 2
 _last_discogs_request_at = 0.0
 
-COVER_MAX_SIZE = 200          # px, longest side
+COVER_MAX_SIZE = 200  # px, longest side
 COVER_MAX_BYTES = 100 * 1024  # must stay under the DB's CHECK constraint
 
-LEADING_ARTICLE_RE = re.compile(
-    r"^(the|a|an|le|la|les|un|une|des)\s+", re.IGNORECASE
-)
+LEADING_ARTICLE_RE = re.compile(r"^(the|a|an|le|la|les|un|une|des)\s+", re.IGNORECASE)
 
 # Heuristic separators used to split a composite artist_credit into several
 # artists ("A feat. B", "A & B", "A, B"...). Best-effort: on atypical
 # composite tags (long classical-music credits, etc.) the split can be
 # imperfect. The raw artist_credit is always kept (after noise-stripping via
 # clean_name) in the DB regardless, so nothing meaningful is ever lost.
-ARTIST_SPLIT_RE = re.compile(
-    r"\s*(?:,|;|/|&|\bfeat\.?\b|\bft\.?\b)\s*", re.IGNORECASE
-)
+ARTIST_SPLIT_RE = re.compile(r"\s*(?:,|;|/|&|\bfeat\.?\b|\bft\.?\b)\s*", re.IGNORECASE)
 
 LOGGER = get_logger("Ingest")
 
@@ -91,6 +112,7 @@ LOGGER = get_logger("Ingest")
 # ---------------------------------------------------------------------------
 # DB initialization
 # ---------------------------------------------------------------------------
+
 
 def init_db(conn: sqlite3.Connection):
     existing = conn.execute(
@@ -109,9 +131,12 @@ def init_db(conn: sqlite3.Connection):
 # Normalization / parsing
 # ---------------------------------------------------------------------------
 
+
 def fold_diacritics(s: str) -> str:
-    """"Taï Phong" -> "Tai Phong": strips accents for matching purposes."""
-    return "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c))
+    """ "Taï Phong" -> "Tai Phong": strips accents for matching purposes."""
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c)
+    )
 
 
 def clean_name(name: str | None) -> str | None:
@@ -241,6 +266,7 @@ def split_artists(artist_credit: str) -> list[str]:
 # Metadata
 # ---------------------------------------------------------------------------
 
+
 def read_metadata(path: Path) -> dict[str, Any]:
     """Returns a metadata dict, with fallbacks for fields that are required
     in the DB even if tags are missing/unreadable. Text fields are passed
@@ -281,7 +307,9 @@ def read_metadata(path: Path) -> dict[str, Any]:
             result["artist_credit"] = clean_name(first_tag(tags, "artist"))
             result["album_name"] = clean_name(first_tag(tags, "album"))
             result["albumartist"] = clean_name(first_tag(tags, "albumartist"))
-            result["genre"] = first_tag(tags, "genre")  # split later, may contain ';'-joined values
+            result["genre"] = first_tag(
+                tags, "genre"
+            )  # split later, may contain ';'-joined values
             result["raw_date"] = first_tag(tags, "date", "originaldate", "year")
             result["track_number"], result["track_total"] = parse_number_pair(
                 first_tag(tags, "tracknumber")
@@ -320,11 +348,16 @@ def discogs_retry_wait(response: requests.Response) -> float:
     return DISCOGS_RATE_LIMIT_WAIT_SECONDS
 
 
-def get_album_discogs_data(album_name: str, artist_name: str, key: StringLike, token: StringLike) -> dict[str, Any]:
+def get_album_discogs_data(
+    album_name: str, artist_name: str, key: StringLike, token: StringLike
+) -> dict[str, Any]:
     if album_name == UNKNOWN_ALBUM or artist_name == UNKNOWN_ARTIST:
         return empty_album_discogs_data()
 
-    with key.dangerous_reveal() as discogs_key, token.dangerous_reveal() as discogs_token:
+    with (
+        key.dangerous_reveal() as discogs_key,
+        token.dangerous_reveal() as discogs_token,
+    ):
         authorization = f"Discogs key={discogs_key}, secret={discogs_token}"
 
     for attempt in range(DISCOGS_MAX_ATTEMPTS):
@@ -339,13 +372,16 @@ def get_album_discogs_data(album_name: str, artist_name: str, key: StringLike, t
             headers={
                 "Authorization": authorization,
                 "Content-Type": "application/json",
-                "User-Agent": "zic-ingestor"
-            }
+                "User-Agent": "zic-ingestor",
+            },
         )
         if response.status_code != 429 or attempt == DISCOGS_MAX_ATTEMPTS - 1:
             break
         wait_seconds = discogs_retry_wait(response)
-        LOGGER.warning("Discogs rate limit reached; waiting %.1f seconds before retrying.", wait_seconds)
+        LOGGER.warning(
+            "Discogs rate limit reached; waiting %.1f seconds before retrying.",
+            wait_seconds,
+        )
         time.sleep(wait_seconds)
 
     if not response.ok:
@@ -366,8 +402,8 @@ def get_album_discogs_data(album_name: str, artist_name: str, key: StringLike, t
                     headers={
                         "Authorization": authorization,
                         "Content-Type": "application/json",
-                        "User-Agent": "zic-ingestor"
-                    }
+                        "User-Agent": "zic-ingestor",
+                    },
                 )
                 response.raise_for_status()
                 master_data = master_response.json()
@@ -402,13 +438,15 @@ def set_metadata(conn, key: str, value: str):
         INSERT INTO metadata (key, value) VALUES (?, ?)
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
         """,
-        (key, value)
+        (key, value),
     )
     conn.commit()
+
 
 # ---------------------------------------------------------------------------
 # Get-or-create helpers
 # ---------------------------------------------------------------------------
+
 
 def get_or_create_artist(conn: sqlite3.Connection, name: str) -> int:
     norm = normalize_name(name)
@@ -425,7 +463,11 @@ def get_or_create_artist(conn: sqlite3.Connection, name: str) -> int:
 
 
 def get_or_create_album(
-    conn: sqlite3.Connection, name: str, artist_id: int, raw_date: str | None, is_compilation: bool
+    conn: sqlite3.Connection,
+    name: str,
+    artist_id: int,
+    raw_date: str | None,
+    is_compilation: bool,
 ) -> int:
     norm = normalize_name(name)
     row = conn.execute(
@@ -473,9 +515,11 @@ def set_song_artists(conn: sqlite3.Connection, song_id: int, artist_credit: str)
             (song_id, artist_id, role, position),
         )
 
+
 # ---------------------------------------------------------------------------
 # Cover thumbnail extraction
 # ---------------------------------------------------------------------------
+
 
 def get_embedded_picture_bytes(path: Path) -> bytes | None:
     """Reads the embedded artwork straight from the file's raw tags (APIC for
@@ -499,15 +543,14 @@ def get_embedded_picture_bytes(path: Path) -> bytes | None:
 
 
 def get_picture_url_content(url: str, key: StringLike, token: StringLike) -> bytes:
-    with key.dangerous_reveal() as discogs_key, token.dangerous_reveal() as discogs_token:
-            authorization = f"Discogs key={discogs_key}, secret={discogs_token}"
+    with (
+        key.dangerous_reveal() as discogs_key,
+        token.dangerous_reveal() as discogs_token,
+    ):
+        authorization = f"Discogs key={discogs_key}, secret={discogs_token}"
 
     response = requests.get(
-        url,
-        headers={
-            "Authorization": authorization,
-            "User-Agent": "zic-ingestor"
-        }
+        url, headers={"Authorization": authorization, "User-Agent": "zic-ingestor"}
     )
     response.raise_for_status()
     return response.content
@@ -553,12 +596,16 @@ def ensure_cover_thumbnail(
     conn: sqlite3.Connection,
     album_id: int,
     path: Path,
-    cover_url: str | None, key: StringLike, token: StringLike
+    cover_url: str | None,
+    key: StringLike,
+    token: StringLike,
 ):
     """Extracts and stores a thumbnail for the album, at most once per run
     and only if the album doesn't already have one."""
 
-    if conn.execute("SELECT 1 FROM covers_thumbnails WHERE album_id = ?", (album_id,)).fetchone():
+    if conn.execute(
+        "SELECT 1 FROM covers_thumbnails WHERE album_id = ?", (album_id,)
+    ).fetchone():
         return
 
     result = extract_cover_thumbnail(path, key, token)
@@ -578,6 +625,7 @@ def ensure_cover_thumbnail(
 # ---------------------------------------------------------------------------
 # Ingesting a single file
 # ---------------------------------------------------------------------------
+
 
 def ingest_file(
     conn: sqlite3.Connection,
@@ -603,22 +651,23 @@ def ingest_file(
 
     meta = read_metadata(path)
     if meta["duration"] == 0.0 and meta["file_size"] == 0:
-        LOGGER.warning(f"Can't read : {path.relative_to(root)}, maybe it is corrupted or empty")
+        LOGGER.warning(
+            f"Can't read : {path.relative_to(root)}, maybe it is corrupted or empty"
+        )
         return "skipped"
 
     artist_credit = resolve_artist_field(meta["artist_credit"])
     album_name = resolve_album_field(meta["album_name"])
-    albumartist_name = resolve_artist_field(meta["albumartist"] or meta["artist_credit"])
+    albumartist_name = resolve_artist_field(
+        meta["albumartist"] or meta["artist_credit"]
+    )
 
     album_artist_id = get_or_create_artist(conn, albumartist_name)
 
     if album_artist_id not in discogs_albums_data:
         try:
             album_discogs_data = get_album_discogs_data(
-                album_name,
-                albumartist_name,
-                discogs_secret.key,
-                discogs_secret.token
+                album_name, albumartist_name, discogs_secret.key, discogs_secret.token
             )
         except requests.ConnectionError:
             LOGGER.warning("Can't connect to Discogs API.")
@@ -628,10 +677,14 @@ def ingest_file(
         album_discogs_data = discogs_albums_data[album_artist_id]
 
     is_compilation = bool(
-        meta["albumartist"] and meta["artist_credit"] and albumartist_name != artist_credit
+        meta["albumartist"]
+        and meta["artist_credit"]
+        and albumartist_name != artist_credit
     )
     year = meta["raw_date"] or (album_discogs_data["year"])
-    album_id = get_or_create_album(conn, album_name, album_artist_id, year, is_compilation)
+    album_id = get_or_create_album(
+        conn, album_name, album_artist_id, year, is_compilation
+    )
 
     genres = album_discogs_data["genres"]
     genres.update(split_genres(meta["genre"]))
@@ -650,7 +703,11 @@ def ingest_file(
             genre_tag_id = gid
         link_album_genre(conn, album_id, gid)
 
-    extra_tags_json = json.dumps({"rejected_genre_tags": rejected_genre_tags}) if rejected_genre_tags else None
+    extra_tags_json = (
+        json.dumps({"rejected_genre_tags": rejected_genre_tags})
+        if rejected_genre_tags
+        else None
+    )
 
     if album_id not in cover_attempted:
         # Cover thumbnail: extracted once per album from whichever file we
@@ -661,7 +718,7 @@ def ingest_file(
             path,
             album_discogs_data["cover_url"],
             discogs_secret.key,
-            discogs_secret.token
+            discogs_secret.token,
         )
         cover_attempted.add(album_id)
 
@@ -683,20 +740,36 @@ def ingest_file(
             WHERE id = ?
             """,
             (
-                meta["title"], artist_credit, album_id,
-                meta["track_number"], meta["track_total"], meta["disc_number"], meta["disc_total"],
-                genre_tag_id, meta["duration"], meta["format"], meta["file_size"],
-                meta["bitrate"], meta["sample_rate"], content_hash,
-                sort_title, extra_tags_json, file_mtime_str,
+                meta["title"],
+                artist_credit,
+                album_id,
+                meta["track_number"],
+                meta["track_total"],
+                meta["disc_number"],
+                meta["disc_total"],
+                genre_tag_id,
+                meta["duration"],
+                meta["format"],
+                meta["file_size"],
+                meta["bitrate"],
+                meta["sample_rate"],
+                content_hash,
+                sort_title,
+                extra_tags_json,
+                file_mtime_str,
                 song_id,
             ),
         )
         set_song_artists(conn, song_id, artist_credit)
         return "updated"
     else:
-        same_hash = conn.execute("SELECT title FROM songs WHERE content_hash = ?", (content_hash,)).fetchone()
+        same_hash = conn.execute(
+            "SELECT title FROM songs WHERE content_hash = ?", (content_hash,)
+        ).fetchone()
         if same_hash:
-            LOGGER.warning(f"{path.relative_to(root)} has the same content as {same_hash[0]}, skipped")
+            LOGGER.warning(
+                f"{path.relative_to(root)} has the same content as {same_hash[0]}, skipped"
+            )
             return "skipped"
         cur = conn.execute(
             """
@@ -709,21 +782,35 @@ def ingest_file(
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                rel_path, meta["title"], artist_credit, album_id,
-                meta["track_number"], meta["track_total"], meta["disc_number"], meta["disc_total"],
-                genre_tag_id, meta["duration"], meta["format"], meta["file_size"],
-                meta["bitrate"], meta["sample_rate"], content_hash, sort_title, extra_tags_json,
+                rel_path,
+                meta["title"],
+                artist_credit,
+                album_id,
+                meta["track_number"],
+                meta["track_total"],
+                meta["disc_number"],
+                meta["disc_total"],
+                genre_tag_id,
+                meta["duration"],
+                meta["format"],
+                meta["file_size"],
+                meta["bitrate"],
+                meta["sample_rate"],
+                content_hash,
+                sort_title,
+                extra_tags_json,
                 file_mtime_str,
             ),
         )
         song_id = cur.lastrowid
         set_song_artists(conn, song_id, artist_credit)
         return "created"
-    
+
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def find_audio_files(root: Path):
     for path in root.rglob("*"):
@@ -752,7 +839,7 @@ def ingest(
         cover_attempted: set[int] = set()
         discogs_albums_data: dict[int, dict[str, Any]] = {}
         file_count = 0
-        
+
         for path in find_audio_files(root):
             file_count += 1
             try:

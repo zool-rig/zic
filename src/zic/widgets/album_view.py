@@ -1,6 +1,5 @@
-from PySide6.QtWidgets import *
-from PySide6.QtCore import *
-from PySide6.QtGui import *
+from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QVBoxLayout, QScrollArea
+from PySide6.QtCore import Signal, Qt
 
 from zic.models.album import Album, AlbumCover
 from zic.models.song import Song
@@ -46,8 +45,8 @@ class SongWidget(QWidget):
         self.sound_wave = SoundWave(bars=4, height=30)
         self.title_lbl = QLabel(
             f"{self.song.track_number} - {self.song.title}"
-            if self.song.track_number is not None else
-            self.song.title
+            if self.song.track_number is not None
+            else self.song.title
         )
         seconds = int(self.song.duration)
         self.duration_lbl = QLabel(f"{seconds // 60:02d}:{seconds % 60:02d}")
@@ -171,8 +170,12 @@ class AlbumView(QWidget):
 
     def set_connections(self) -> None:
         self.close_btn.clicked.connect(self.hide)
-        self.play_btn.clicked.connect(lambda: self.play_album_requested.emit(self.album))
-        self.play_random_btn.clicked.connect(lambda: self.shuffle_album_requested.emit(self.album))
+        self.play_btn.clicked.connect(
+            lambda: self.play_album_requested.emit(self.album)
+        )
+        self.play_random_btn.clicked.connect(
+            lambda: self.shuffle_album_requested.emit(self.album)
+        )
 
     def set_default(self) -> None:
         for layout, alignment in (
@@ -204,7 +207,9 @@ class AlbumView(QWidget):
         self.clear_songs()
         for song in self.songs:
             widget = SongWidget(song, self.cover.dominant_color if self.cover else None)
-            widget.play_song_requested.connect(lambda s=song: self.play_song_requested.emit(self.album, s))
+            widget.play_song_requested.connect(
+                lambda s=song: self.play_song_requested.emit(self.album, s)
+            )
             self.songs_v_layout.addWidget(widget)
             self.song_widgets.append(widget)
             self.widget_song_map[song.id] = widget
@@ -224,7 +229,7 @@ class AlbumView(QWidget):
 
         if song.id not in self.widget_song_map:
             return
-        
+
         widget = self.widget_song_map[song.id]
         widget.set_playing_display()
         self.current_playing_widget = widget
@@ -237,6 +242,6 @@ class AlbumView(QWidget):
     def scroll_to_song(self, song: Song) -> None:
         if song.id not in self.widget_song_map:
             return
-        
+
         widget = self.widget_song_map[song.id]
         self.scroll_area.ensureWidgetVisible(widget)

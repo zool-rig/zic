@@ -1,6 +1,6 @@
-from PySide6.QtWidgets import *
-from PySide6.QtCore import *
-from PySide6.QtGui import *
+from PySide6.QtWidgets import QLabel
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QImage, QPixmap
 
 from zic.resources import get_resource
 

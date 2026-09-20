@@ -14,7 +14,7 @@ class DiscogsSecret:
     def from_env(cls) -> Self:
         return cls(
             os.environ.get("ZIC_INGESTOR_DISCOGS_KEY", ""),
-            os.environ.get("ZIC_INGESTOR_DISCOGS_TOKEN", "")
+            os.environ.get("ZIC_INGESTOR_DISCOGS_TOKEN", ""),
         )
 
     @property

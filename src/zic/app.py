@@ -1,8 +1,8 @@
 import importlib.metadata
 
 from PySide6.QtWidgets import *
-from PySide6.QtCore import *
-from PySide6.QtGui import *
+from PySide6.QtCore import Qt, QProcess, QEvent, QObject, QSize, QTimer
+from PySide6.QtGui import QKeyEvent
 
 from zic.api import ZicApi
 from zic.config import get_user_config, get_app_config
@@ -104,17 +104,26 @@ class ZicUI(QDialog):
 
     def init_menu_bar(self) -> None:
         self.database_menu = self.menu_bar.addMenu("Database")
-        last_ingest_lbl = DynLabel(lambda: self.api.last_ingest_date().strftime("%d/%m/%Y, %H:%M:%S"), prefix="Last scan : ")
+        last_ingest_lbl = DynLabel(
+            lambda: self.api.last_ingest_date().strftime("%d/%m/%Y, %H:%M:%S"),
+            prefix="Last scan : ",
+        )
         last_ingest_lbl.setFixedWidth(200)
         action = QWidgetAction(self.database_menu)
         action.setDefaultWidget(last_ingest_lbl)
         self.database_menu.addAction(action)
 
-        self.check_for_new_songs_action = self.database_menu.addAction("Check for new songs")
+        self.check_for_new_songs_action = self.database_menu.addAction(
+            "Check for new songs"
+        )
         self.check_for_new_songs_action.triggered.connect(self.check_for_new_songs)
         self.rescan_action = self.database_menu.addAction("Full rescan")
-        self.rescan_action.triggered.connect(lambda: self.check_for_new_songs(rescan=True))
-        self.compute_genres_action = self.database_menu.addAction("Compute genre positions")
+        self.rescan_action.triggered.connect(
+            lambda: self.check_for_new_songs(rescan=True)
+        )
+        self.compute_genres_action = self.database_menu.addAction(
+            "Compute genre positions"
+        )
         self.compute_genres_action.triggered.connect(self.compute_genres)
 
         self.help_menu = self.menu_bar.addMenu("Help")
@@ -176,7 +185,7 @@ class ZicUI(QDialog):
             (self.filter_tab_v_layout, Qt.AlignTop),
         ):
             layout.setAlignment(alignment)
-        
+
         # Don't align main_v_layout to top; let it expand to fill available space
         self.main_v_layout.setStretchFactor(self.main_h_layout, 1)
 
@@ -229,14 +238,14 @@ class ZicUI(QDialog):
 
     def reload(self) -> None:
         self.api.invalidate_caches()
-        
+
         # Clear and refill album explorer
         self.album_explorer.fill()
-        
+
         # Clear artist and genre filters
         self.artist_filter_widget.clear()
         self.genre_filter_widget.clear()
-        
+
         # If a filter is visible, refill it immediately
         if self.filter_stacked_widget.isVisible():
             current_index = self.filter_stacked_widget.currentIndex()
@@ -281,7 +290,7 @@ class ZicUI(QDialog):
         action_name = key_bindings.get(int(event.key()))
         if action_name is None:
             return
-        
+
         action = {
             "play/pause": self.toggle_play_pause,
             "mute": self.mute_sound,
@@ -310,10 +319,14 @@ class ZicUI(QDialog):
         self.player_widget.previous()
 
     def advance(self) -> None:
-        self.player_widget.playback_widget.advance(10 if QApplication.keyboardModifiers() == Qt.ControlModifier else 5)
+        self.player_widget.playback_widget.advance(
+            10 if QApplication.keyboardModifiers() == Qt.ControlModifier else 5
+        )
 
     def rewind(self) -> None:
-        self.player_widget.playback_widget.rewind(10 if QApplication.keyboardModifiers() == Qt.ControlModifier else 5)
+        self.player_widget.playback_widget.rewind(
+            10 if QApplication.keyboardModifiers() == Qt.ControlModifier else 5
+        )
 
     def volume_up(self) -> None:
         self.player_widget.volume_slider.volume_up(5)
@@ -336,7 +349,7 @@ class ZicUI(QDialog):
 
     def show_about_dialog(self) -> None:
         meta = importlib.metadata.metadata("zic")
-        keywords = meta.get_all('Keywords', [])
+        keywords = meta.get_all("Keywords", [])
 
         release_date = None
         for keyword in keywords:
@@ -344,8 +357,8 @@ class ZicUI(QDialog):
                 release_date = keyword.split(":")[-1]
                 break
 
-        version = importlib.metadata.version('zic')
-        description = meta['summary']
+        version = importlib.metadata.version("zic")
+        description = meta["summary"]
 
         about_message = f"""
         <div style="text-align:center;">
@@ -359,37 +372,37 @@ class ZicUI(QDialog):
 
         about_message += "</div>"
 
-        QMessageBox.about(
-            self,
-            "About",
-            about_message
-        )
+        QMessageBox.about(self, "About", about_message)
 
     def check_for_new_songs(self, rescan: bool = False) -> None:
-        args = ["ingest", str(get_app_config().root_dir), "--db", str(get_app_config().db_path)]
+        args = [
+            "ingest",
+            str(get_app_config().root_dir),
+            "--db",
+            str(get_app_config().db_path),
+        ]
         if rescan:
             args.append("--rescan")
         self.ingest_process.start("zic", args)
 
-    def on_ingest_process_finished(self, exit_code: int, exit_status: QProcess.ExitStatus) -> None:
+    def on_ingest_process_finished(
+        self, exit_code: int, exit_status: QProcess.ExitStatus
+    ) -> None:
         if exit_code == 0 and exit_status == QProcess.ExitStatus.NormalExit:
-            QMessageBox.information(
-                self,
-                "Database",
-                "Database scan finished"
-            )
+            QMessageBox.information(self, "Database", "Database scan finished")
             self.reload()
 
     def on_ingest_process_failed(self, error: QProcess.ProcessError) -> None:
         QMessageBox.warning(
             self,
             "Database",
-            f"Database scan failed : {error.name}"
-            f"\n{self.ingest_process.errorString()}"
+            f"Database scan failed : {error.name}\n{self.ingest_process.errorString()}",
         )
 
     def compute_genres(self) -> None:
-        self.ingest_process.start("zic", ["compute-genres", str(get_app_config().db_path)])
+        self.ingest_process.start(
+            "zic", ["compute-genres", str(get_app_config().db_path)]
+        )
 
 
 class GlobalKeyFilter(QObject):
@@ -398,7 +411,11 @@ class GlobalKeyFilter(QObject):
         self.app_instance: ZicUI = app_instance
 
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.KeyPress and event.key() in {Qt.Key_Space, Qt.Key_Left, Qt.Key_Right}:
+        if event.type() == QEvent.KeyPress and event.key() in {
+            Qt.Key_Space,
+            Qt.Key_Left,
+            Qt.Key_Right,
+        }:
             self.app_instance.keyPressEvent(event)
             return True
         return super().eventFilter(obj, event)

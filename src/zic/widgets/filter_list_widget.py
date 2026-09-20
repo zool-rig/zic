@@ -1,6 +1,16 @@
-from PySide6.QtWidgets import *
-from PySide6.QtCore import *
-from PySide6.QtGui import *
+from PySide6.QtWidgets import (
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLineEdit,
+    QLabel,
+    QMenu,
+    QCompleter,
+    QAbstractItemView,
+    QListWidget,
+)
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QIcon, QAction, QCursor
 
 from zic.utils.qt_utils import make_toolbutton, set_label_font_size
 from zic.resources import get_resource
@@ -67,7 +77,13 @@ class FilterListWidget(QWidget):
         self.search_edt.setClearButtonEnabled(True)
         clear_button = self.search_edt.findChildren(QAction)
         if clear_button:
-            clear_button[0].triggered.connect(lambda: (self.search_edt.clear(), self.filter(), self.list_widget.clearSelection()))
+            clear_button[0].triggered.connect(
+                lambda: (
+                    self.search_edt.clear(),
+                    self.filter(),
+                    self.list_widget.clearSelection(),
+                )
+            )
         self.search_edt.setPlaceholderText("🔍 Search...")
         self.list_widget.setSortingEnabled(True)
         self.set_descending_order(
@@ -76,7 +92,9 @@ class FilterListWidget(QWidget):
         self.list_widget.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
         set_label_font_size(self.title_lbl, 12)
-        self.search_edt.setCompleter(QCompleter(self.list_widget.model(), caseSensitivity=Qt.CaseInsensitive))
+        self.search_edt.setCompleter(
+            QCompleter(self.list_widget.model(), caseSensitivity=Qt.CaseInsensitive)
+        )
 
     def fill(self) -> None:
         self.title_lbl.setText(f"{self.list_widget.count()} - {self.title}")

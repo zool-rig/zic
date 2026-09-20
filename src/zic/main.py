@@ -58,10 +58,14 @@ def cli(ctx: click.Context, version: bool) -> None:
     "--rescan", is_flag=True, help="Force re-parsing of every file, even unchanged ones"
 )
 @click.option(
-    "-k", "--discogs-key", help="A Discogs Auth key, https://www.discogs.com/developers/#page:authentication,header:authentication-discogs-auth-flow"
+    "-k",
+    "--discogs-key",
+    help="A Discogs Auth key, https://www.discogs.com/developers/#page:authentication,header:authentication-discogs-auth-flow",
 )
 @click.option(
-    "-t", "--discogs-token", help="A Discogs Auth token, https://www.discogs.com/developers/#page:authentication,header:authentication-discogs-auth-flow"
+    "-t",
+    "--discogs-token",
+    help="A Discogs Auth token, https://www.discogs.com/developers/#page:authentication,header:authentication-discogs-auth-flow",
 )
 def ingest(
     folder: Path,
@@ -90,7 +94,7 @@ def ingest(
         writable=True,
         path_type=Path,
     ),
-    help="Path to the SQLite database"
+    help="Path to the SQLite database",
 )
 def compute_genres(db: Path) -> None:
     from zic.ingestor.genres import compute_genres_positions

@@ -1,6 +1,5 @@
-from PySide6.QtWidgets import *
-from PySide6.QtCore import *
-from PySide6.QtGui import *
+from PySide6.QtWidgets import QWidget, QFileDialog, QHBoxLayout, QLineEdit
+from PySide6.QtCore import Signal, Qt
 
 from pathlib import Path
 from typing import Callable, Any

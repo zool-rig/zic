@@ -1,8 +1,8 @@
 import random
 
 from PySide6.QtCore import Qt, QTimer, QSize
-from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtGui import QColor, QPainter, QPaintEvent
+from PySide6.QtWidgets import QWidget
 
 
 class SoundWave(QWidget):
@@ -13,7 +13,7 @@ class SoundWave(QWidget):
         bars: int = 25,
         bar_width: int = 3,
         spacing: int = 4,
-        height: int = 40
+        height: int = 40,
     ) -> None:
         super().__init__(parent)
 
@@ -29,17 +29,15 @@ class SoundWave(QWidget):
         self.timer.timeout.connect(self.animate)
 
         self.setMinimumHeight(height)
-        self.setMinimumWidth(
-            bars * bar_width + (bars - 1) * spacing
-        )
+        self.setMinimumWidth(bars * bar_width + (bars - 1) * spacing)
 
-    def sizeHint(self):
+    def sizeHint(self) -> QSize:
         return QSize(
             self.bars * self.bar_width + (self.bars - 1) * self.spacing,
             40,
         )
 
-    def animate(self):
+    def animate(self) -> None:
         for i in range(self.bars):
             target = random.uniform(0.15, 1.0)
 
@@ -47,11 +45,11 @@ class SoundWave(QWidget):
 
         self.update()
 
-    def set_color(self, color):
+    def set_color(self, color: str) -> None:
         self.color = QColor(color)
         self.update()
 
-    def paintEvent(self, event):
+    def paintEvent(self, _: QPaintEvent) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
@@ -60,10 +58,7 @@ class SoundWave(QWidget):
 
         center_y = self.height() / 2
 
-        total_width = (
-            self.bars * self.bar_width
-            + (self.bars - 1) * self.spacing
-        )
+        total_width = self.bars * self.bar_width + (self.bars - 1) * self.spacing
 
         start_x = (self.width() - total_width) / 2
 

@@ -1,6 +1,15 @@
-from PySide6.QtWidgets import *
-from PySide6.QtCore import *
-from PySide6.QtGui import *
+from PySide6.QtWidgets import (
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QSlider,
+    QStyle,
+    QStyleOptionSlider,
+    QSizePolicy,
+)
+from PySide6.QtCore import Qt, Signal, QTimer, QEvent, QObject, QUrl
+from PySide6.QtGui import QIcon
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput, QMediaDevices
 
 from zic.utils.qt_utils import make_toolbutton
@@ -64,9 +73,17 @@ class SongInfoWidget(QWidget):
         self.v_layout.addWidget(self.artist_name_lbl)
 
     def set_connections(self) -> None:
-        self.song_title_lbl.clicked.connect(lambda _: self.song_url_clicked.emit(self.song))
-        self.album_title_lbl.clicked.connect(lambda _: self.album_url_clicked.emit(self.song.album))
-        self.artist_name_lbl.clicked.connect(lambda _: self.artist_url_clicked.emit(self.app.api.get_song_artists(self.song)))
+        self.song_title_lbl.clicked.connect(
+            lambda _: self.song_url_clicked.emit(self.song)
+        )
+        self.album_title_lbl.clicked.connect(
+            lambda _: self.album_url_clicked.emit(self.song.album)
+        )
+        self.artist_name_lbl.clicked.connect(
+            lambda _: self.artist_url_clicked.emit(
+                self.app.api.get_song_artists(self.song)
+            )
+        )
 
     def set_default(self) -> None:
         for label in (
@@ -344,11 +361,15 @@ class PlaybackWidget(QWidget):
         return super().eventFilter(watched, event)
 
     def advance(self, value: int) -> None:
-        elapsed = min(self.media_player.position() + value * 1000, self.time_slider.maximum())
+        elapsed = min(
+            self.media_player.position() + value * 1000, self.time_slider.maximum()
+        )
         self.seek(elapsed)
 
     def rewind(self, value: int) -> None:
-        elapsed = max(self.media_player.position() - value * 1000, self.time_slider.minimum())
+        elapsed = max(
+            self.media_player.position() - value * 1000, self.time_slider.minimum()
+        )
         self.seek(elapsed)
 
 
@@ -498,8 +519,12 @@ class PlayerWidget(QWidget):
         self.playback_widget.next_requested.connect(self.next)
         self.likes_widget.song_liked.connect(self.on_current_song_liked)
         self.devices.audioOutputsChanged.connect(self.on_audio_outputs_changed)
-        self.playback_widget.song_paused.connect(lambda: self.song_paused.emit(self.current_song))
-        self.playback_widget.song_resumed.connect(lambda: self.song_started.emit(self.current_song))
+        self.playback_widget.song_paused.connect(
+            lambda: self.song_paused.emit(self.current_song)
+        )
+        self.playback_widget.song_resumed.connect(
+            lambda: self.song_started.emit(self.current_song)
+        )
         self.song_info_widget.song_url_clicked.connect(self.song_url_clicked)
         self.song_info_widget.album_url_clicked.connect(self.album_url_clicked)
         self.song_info_widget.artist_url_clicked.connect(self.artist_url_clicked)

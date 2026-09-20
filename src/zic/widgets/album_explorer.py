@@ -1,12 +1,35 @@
-from typing import Any
-
-from PySide6.QtWidgets import *
-from PySide6.QtCore import *
-from PySide6.QtGui import *
-
 import sqlite3
 
+from PySide6.QtWidgets import (
+    QWidget,
+    QHBoxLayout,
+    QVBoxLayout,
+    QLineEdit,
+    QListView,
+    QLabel,
+    QGraphicsDropShadowEffect,
+    QAbstractItemView,
+    QCompleter,
+    QWidgetAction,
+)
+from PySide6.QtCore import (
+    Qt,
+    QObject,
+    QEvent,
+    QAbstractItemModel,
+    Signal,
+    QSize,
+    QAbstractListModel,
+    QModelIndex,
+    QSortFilterProxyModel,
+    QTimer,
+    Slot,
+    QThread,
+)
+from PySide6.QtGui import QCursor, QColor, QWheelEvent, QAction
+
 from enum import Enum
+from typing import Any
 
 from zic.utils.qt_utils import make_toolbutton, set_label_font_size, SignalsOFF
 from zic.utils.query_builder import QueryBuilder
@@ -33,6 +56,7 @@ PREFETCH_DEBOUNCE_MS = 80
 
 class FilterTag(QWidget):
     """A small tag widget with a label and a close button."""
+
     clear_clicked = Signal()
 
     def __init__(self, label: str, parent=None) -> None:
@@ -393,7 +417,9 @@ class AlbumFilterProxy(QSortFilterProxyModel):
 
 
 class AlbumCompletionModel(QAbstractListModel):
-    def __init__(self, source_model: AlbumExplorerModel, text_role: int = TEXT_ROLE) -> None:
+    def __init__(
+        self, source_model: AlbumExplorerModel, text_role: int = TEXT_ROLE
+    ) -> None:
         super().__init__()
         self._source = source_model
         self._text_role = text_role
@@ -408,7 +434,7 @@ class AlbumCompletionModel(QAbstractListModel):
         self.beginResetModel()
         seen: dict[str, int] = {}  # texte -> source_row (garde la première occurrence)
         for row in range(self._source.rowCount()):
-            for text in (self._source.index(row, 0).data(self._text_role) or []):
+            for text in self._source.index(row, 0).data(self._text_role) or []:
                 if text not in seen:
                     seen[text] = row
         self._entries = list(seen.items())
@@ -536,10 +562,7 @@ class AlbumExplorerView(QListView):
         delta = event.angleDelta().y()
         target = scrollbar.value() - delta
 
-        target = max(
-            scrollbar.minimum(),
-            min(target, scrollbar.maximum())
-        )
+        target = max(scrollbar.minimum(), min(target, scrollbar.maximum()))
         scrollbar.setValue(target)
         event.accept()
 
@@ -578,7 +601,7 @@ class AlbumExplorer(QWidget):
         self.model = None
         self.proxy = None
         self.view = None
-        self.completion_model = None 
+        self.completion_model = None
 
         # Menu
         self.title_toggle = None
@@ -588,7 +611,7 @@ class AlbumExplorer(QWidget):
         # Background cover loading
         self.cover_thread = None
         self.cover_worker = None
-        
+
         # Current filters
         self._current_artists: list[Artist] = []
         self._current_genres: list[Genre] = []
@@ -680,10 +703,18 @@ class AlbumExplorer(QWidget):
         self.search_edt.setClearButtonEnabled(True)
         clear_button = self.search_edt.findChildren(QAction)
         if clear_button:
-            clear_button[0].triggered.connect(lambda: (self.search_edt.clear(), self.on_filter_changed()))
-        
+            clear_button[0].triggered.connect(
+                lambda: (self.search_edt.clear(), self.on_filter_changed())
+            )
+
         set_label_font_size(self.title_lbl, 12)
-        self.search_edt.setCompleter(QCompleter(self.completion_model, completionRole=Qt.DisplayRole, caseSensitivity=Qt.CaseInsensitive))
+        self.search_edt.setCompleter(
+            QCompleter(
+                self.completion_model,
+                completionRole=Qt.DisplayRole,
+                caseSensitivity=Qt.CaseInsensitive,
+            )
+        )
 
     def fill(self) -> None:
         albums = self.api.albums()
@@ -731,14 +762,14 @@ class AlbumExplorer(QWidget):
     def _update_filter_tags(self) -> None:
         """Update the filter tags display based on current filters."""
         self.tags_container.clear_all()
-        
+
         for artist in self._current_artists:
             self.tags_container.add_tag(
                 f"artist_{artist.id}",
                 f"Artist: {artist.name}",
                 lambda a=artist: self.remove_artist_filter(a),
             )
-        
+
         for genre in self._current_genres:
             self.tags_container.add_tag(
                 f"genre_{genre.id}",

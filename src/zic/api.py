@@ -22,9 +22,9 @@ LOGGER = get_logger("API")
 
 
 class AlbumSongOrder(Enum):
-        TRACK_NUM = 1
-        RANDOM = 2
-        SONG_ID = 3
+    TRACK_NUM = 1
+    RANDOM = 2
+    SONG_ID = 3
 
 
 class ZicApi:
@@ -343,8 +343,12 @@ class ZicApi:
             query.push("ORDER BY RANDOM()")
         elif order_mode == AlbumSongOrder.SONG_ID:
             if song is None:
-                raise ValueError(f"Song must be provided with order mode to {order_mode}, got None")
-            query.push("ORDER BY CASE WHEN songs.track_number IS NULL THEN 1 ELSE 0 END,")
+                raise ValueError(
+                    f"Song must be provided with order mode to {order_mode}, got None"
+                )
+            query.push(
+                "ORDER BY CASE WHEN songs.track_number IS NULL THEN 1 ELSE 0 END,"
+            )
             query.push("((songs.track_number - ")
             query.push_bind(song.track_number)
             query.push(") + 10000) % 10000")
@@ -363,19 +367,21 @@ class ZicApi:
     def get_album_playlist(self, album: Album) -> None:
         return Playlist(
             lambda *_: self.get_album_songs(album),
-            self.fetch_random_songs  # TODO : replace by a similarity algo
+            self.fetch_random_songs,  # TODO : replace by a similarity algo
         )
 
     def get_shuffle_album_playlist(self, album: Album) -> None:
         return Playlist(
             lambda *_: self.get_album_songs(album, order_mode=AlbumSongOrder.RANDOM),
-            self.fetch_random_songs  # TODO : replace by a similarity algo
+            self.fetch_random_songs,  # TODO : replace by a similarity algo
         )
-    
+
     def get_song_playlist(self, album: Album, song: Song) -> None:
         return Playlist(
-            lambda *_: self.get_album_songs(album, order_mode=AlbumSongOrder.SONG_ID, song=song),
-            self.fetch_random_songs  # TODO : replace by a similarity algo
+            lambda *_: self.get_album_songs(
+                album, order_mode=AlbumSongOrder.SONG_ID, song=song
+            ),
+            self.fetch_random_songs,  # TODO : replace by a similarity algo
         )
 
     def get_song_artists(self, song: Song) -> list[Artist]:
