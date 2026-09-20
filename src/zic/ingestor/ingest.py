@@ -1,6 +1,6 @@
 import sys
 import re
-import logging
+import os
 import sqlite3
 import time
 import unicodedata
@@ -357,7 +357,26 @@ def get_album_discogs_data(album_name: str, artist_name: str, key: StringLike, t
 
     for r in response_data["results"]:
         if "cover_image" in r and not result["cover_url"]:
-            result["cover_url"] = r["cover_image"]
+            if r["cover_image"]:
+                result["cover_url"] = r["cover_image"]
+            elif "master_url" in r and r["master_url"]:
+                master_response = requests.get(
+                    r["master_url"],
+                    headers={
+                        "Authorization": authorization,
+                        "Content-Type": "application/json",
+                        "User-Agent": "zic-ingestor"
+                    }
+                )
+                response.raise_for_status()
+                master_data = master_response.json()
+                if "images" in master_data and master_data["images"]:
+                    for image_data in master_data["images"]:
+                        if image_data.get("type") == "primary":
+                            if "uri" in image_data:
+                                result["cover_url"] = image_data["uri"]
+                                break
+
         if "year" in r and not result["year"]:
             result["year"] = r["year"]
         if "genre" in r:
@@ -468,14 +487,32 @@ def get_embedded_picture_bytes(path: Path) -> bytes | None:
     return None
 
 
-def extract_cover_thumbnail(path: Path):
+def get_picture_url_content(url: str, key: StringLike, token: StringLike) -> bytes:
+    with key.dangerous_reveal() as discogs_key, token.dangerous_reveal() as discogs_token:
+            authorization = f"Discogs key={discogs_key}, secret={discogs_token}"
+
+    response = requests.get(
+        url,
+        headers={
+            "Authorization": authorization,
+            "User-Agent": "zic-ingestor"
+        }
+    )
+    response.raise_for_status()
+    return response.content
+
+
+def extract_cover_thumbnail(path: Path | str, key: StringLike, token: StringLike):
     """Extracts, downsizes and compresses the embedded artwork so it fits
     the DB's 100KB CHECK constraint. Returns
     (jpeg_bytes, mime_type, width, height, dominant_color_hex) or None if
     there's no embedded artwork, it can't be decoded, or Pillow isn't
     installed.
     """
-    raw = get_embedded_picture_bytes(path)
+    if os.path.exists(path):
+        raw = get_embedded_picture_bytes(path)
+    elif path.startswith("http"):
+        raw = get_picture_url_content(path, key, token)
     if not raw:
         return None
     try:
@@ -505,7 +542,7 @@ def ensure_cover_thumbnail(
     conn: sqlite3.Connection,
     album_id: int,
     path: Path,
-    cover_url: str | None,
+    cover_url: str | None, key: StringLike, token: StringLike
 ):
     """Extracts and stores a thumbnail for the album, at most once per run
     and only if the album doesn't already have one."""
@@ -513,11 +550,10 @@ def ensure_cover_thumbnail(
     if conn.execute("SELECT 1 FROM covers_thumbnails WHERE album_id = ?", (album_id,)).fetchone():
         return
 
-    result = extract_cover_thumbnail(path)
+    result = extract_cover_thumbnail(path, key, token)
     if result is None:
         if cover_url:
-            print(">>>>>>>", cover_url)
-            return
+            result = extract_cover_thumbnail(cover_url, key, token)
         else:
             return
     thumb_bytes, mime, w, h, color = result
@@ -612,7 +648,9 @@ def ingest_file(
             conn,
             album_id,
             path,
-            album_discogs_data["cover_url"]
+            album_discogs_data["cover_url"],
+            discogs_secret.key,
+            discogs_secret.token
         )
         cover_attempted.add(album_id)
 
