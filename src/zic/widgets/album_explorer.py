@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QWidgetAction,
+    QFrame,
 )
 
 from zic.api import ZicApi
@@ -35,7 +36,7 @@ from zic.config import get_app_config, get_user_config
 from zic.models.album import Album, AlbumCover
 from zic.models.artist import Artist
 from zic.models.genre import Genre
-from zic.utils.qt_utils import SignalsOFF, make_toolbutton, set_label_font_size
+from zic.utils.qt_utils import SignalsOFF, make_toolbutton, set_label_font_size, style_completer_popup
 from zic.utils.query_builder import QueryBuilder
 from zic.widgets.cover_thumbnail import DEFAULT_COVER, CoverThumbnail
 from zic.widgets.rules import VRule
@@ -52,13 +53,14 @@ PREFETCH_MARGIN_ROWS = 30
 PREFETCH_DEBOUNCE_MS = 80
 
 
-class FilterTag(QWidget):
+class FilterTag(QFrame):
     """A small tag widget with a label and a close button."""
 
     clear_clicked = Signal()
 
     def __init__(self, label: str, parent=None) -> None:
         super().__init__(parent)
+        self.setObjectName("ContainerFrame")
         self.label_text = label
         self.init_ui()
 
@@ -66,16 +68,21 @@ class FilterTag(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(6, 2, 2, 2)
         layout.setSpacing(4)
+        layout.setAlignment(Qt.AlignVCenter)
 
         label = QLabel(self.label_text)
         close_btn = make_toolbutton(
             "icons/close.png",
             tooltip="Remove filter",
+            icon_size=QSize(10, 10),
+            name="SmallToolButton",
         )
         close_btn.clicked.connect(self.clear_clicked.emit)
 
         layout.addWidget(label)
         layout.addWidget(close_btn)
+
+        self.setFixedHeight(32)
 
 
 class FilterTagsContainer(QWidget):
@@ -90,7 +97,9 @@ class FilterTagsContainer(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
+        layout.setAlignment(Qt.AlignVCenter)
         self.setLayout(layout)
+        self.setFixedHeight(32)
 
     def add_tag(self, tag_id: str, label: str, on_clear_callback) -> None:
         """Add a new tag or update existing one."""
@@ -682,6 +691,7 @@ class AlbumExplorer(QWidget):
         # self.top_h_layout.addWidget(self.filter_btn)
         self.top_h_layout.addWidget(self.sort_btn)
         # self.top_h_layout.addWidget(self.settings_btn)
+        self.top_h_layout.setAlignment(Qt.AlignVCenter)
         self.main_v_layout.addWidget(VRule())
         self.main_v_layout.addWidget(self.view)
 
@@ -702,6 +712,7 @@ class AlbumExplorer(QWidget):
         self.main_v_layout.setAlignment(Qt.AlignTop)
         self.search_edt.setPlaceholderText("🔍 Search...")
         self.search_edt.setClearButtonEnabled(True)
+        self.sort_btn.setFixedHeight(32)
         clear_button = self.search_edt.findChildren(QAction)
         if clear_button:
             clear_button[0].triggered.connect(
@@ -709,13 +720,13 @@ class AlbumExplorer(QWidget):
             )
 
         set_label_font_size(self.title_lbl, 12)
-        self.search_edt.setCompleter(
-            QCompleter(
-                self.completion_model,
-                completionRole=Qt.DisplayRole,
-                caseSensitivity=Qt.CaseInsensitive,
-            )
+        completer = QCompleter(
+            self.completion_model,
+            completionRole=Qt.DisplayRole,
+            caseSensitivity=Qt.CaseInsensitive,
         )
+        style_completer_popup(completer)
+        self.search_edt.setCompleter(completer)
 
     def fill(self) -> None:
         albums = self.api.albums()
@@ -767,14 +778,14 @@ class AlbumExplorer(QWidget):
         for artist in self._current_artists:
             self.tags_container.add_tag(
                 f"artist_{artist.id}",
-                f"Artist: {artist.name}",
+                artist.name,
                 lambda a=artist: self.remove_artist_filter(a),
             )
 
         for genre in self._current_genres:
             self.tags_container.add_tag(
                 f"genre_{genre.id}",
-                f"Genre: {genre.name}",
+                genre.name,
                 lambda g=genre: self.remove_genre_filter(g),
             )
 

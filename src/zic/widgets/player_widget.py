@@ -1,4 +1,4 @@
-from PySide6.QtCore import QEvent, QObject, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, QUrl, Signal, QSize
 from PySide6.QtGui import QIcon
 from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
 from PySide6.QtWidgets import (
@@ -235,9 +235,13 @@ class PlaybackWidget(QWidget):
     def init_widgets(self) -> None:
         self.previous_btn = make_toolbutton("icons/previous.png", tooltip="Previous")
         self.play_btn = make_toolbutton(
-            "icons/play.png", tooltip="Previous", checkable=True
+            "icons/play.png",
+            tooltip="Play",
+            checkable=True,
+            icon_size=QSize(25, 25),
+            name="BigToolButton",
         )
-        self.next_btn = make_toolbutton("icons/next.png", tooltip="Previous")
+        self.next_btn = make_toolbutton("icons/next.png", tooltip="Next")
         self.current_time_lbl = QLabel("00:00")
         self.time_slider = QSlider(Qt.Horizontal)
         self.total_time_lbl = QLabel("00:00")
@@ -268,7 +272,7 @@ class PlaybackWidget(QWidget):
         ):
             layout.setAlignment(alignment)
 
-        self.play_btn.setFixedSize(30, 30)
+        self.play_btn.setFixedSize(50, 50)
         self.time_slider.setFixedWidth(300)
         self.time_slider.installEventFilter(self)
         self.progress_timer.setInterval(500)
@@ -408,6 +412,8 @@ class VolumeSlider(QWidget):
             "icons/mute.png" if get_user_config().muted else "icons/volume.png",
             tooltip="Mute",
             checkable=True,
+            icon_size=QSize(12, 12),
+            name="SmallToolButton",
         )
         self.slider = QSlider(Qt.Horizontal)
 

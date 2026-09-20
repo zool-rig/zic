@@ -10,7 +10,7 @@ from zic.models.album import Album, AlbumCover
 from zic.models.artist import Artist
 from zic.models.song import Song
 from zic.resources import get_resource
-from zic.utils.qt_utils import SignalsOFF, make_toolbutton
+from zic.utils.qt_utils import SignalsOFF, make_toolbutton, named_widget
 from zic.widgets.album_explorer import AlbumExplorer
 from zic.widgets.album_view import AlbumView
 from zic.widgets.artists_filter_widget import ArtistsFilterWidget
@@ -67,11 +67,11 @@ class ZicUI(QDialog):
         self.set_layout()
         self.set_connections()
         self.set_default()
-        # self.set_style_sheet()
+        self.set_style_sheet()
 
-        # timer = QTimer(self)
-        # timer.timeout.connect(self.set_style_sheet)
-        # timer.start(1000)
+        timer = QTimer(self)
+        timer.timeout.connect(self.set_style_sheet)
+        timer.start(2000)
 
     def init_layouts(self) -> None:
         self.main_v_layout = QVBoxLayout(self)
@@ -87,7 +87,7 @@ class ZicUI(QDialog):
             "icons/shuffle.png", tooltip="Play random"
         )
         self.reload_btn = make_toolbutton("icons/refresh-arrow.png", tooltip="Reload")
-        self.filter_tab_frame = QFrame()
+        self.filter_tab_frame = named_widget(QFrame, "ContainerFrame")
         self.toggle_artists_btn = make_toolbutton(
             "icons/artist.png", tooltip="Toggle artists view", checkable=True
         )

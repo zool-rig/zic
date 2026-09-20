@@ -26,12 +26,22 @@ QToolButton::pressed {
     background-color: #151B24;
 }
 
+#BigToolButton {
+    padding: 1px;
+    border-radius: 12px;
+}
+
+#SmallToolButton {
+    padding: 3px;
+    border-radius: 6px;
+}
+
 #Separator {
     color: #2A3342;
 }
 
 QLineEdit {
-    padding: 4px
+    padding: 6px
 }
 
 QScrollBar {
@@ -64,17 +74,43 @@ QScrollBar::add-page, QScrollBar::sub-page {
     background-color: transparent;
 }
 
+QAbstractItemView {
+    outline: none;
+}
+
 QAbstractItemView::item {
     padding: 4px;
     border-radius: 4px;
     margin-bottom: 2px;
 }
 
-QAbstractItemView::item::hover {
+QAbstractItemView::item:hover {
     background-color: #1C2330;
 }
 
-QAbstractItemView::item::selected {
+QAbstractItemView::item:selected {
+    background-color: #35F0E0;
+    color: #151B24;
+}
+
+QListView#CompleterPopup {
+    background-color: #151B24;
+    border: 1px solid #2A3342;
+    border-radius: 4px;
+    outline: none;
+}
+
+QListView#CompleterPopup::item {
+    padding: 6px 8px;
+    border-radius: 4px;
+    margin-bottom: 2px;
+}
+
+QListView#CompleterPopup::item:hover {
+    background-color: #1C2330;
+}
+
+QListView#CompleterPopup::item:selected {
     background-color: #35F0E0;
     color: #151B24;
 }
@@ -103,4 +139,33 @@ QSlider::handle:horizontal::hover {
 
 QSlider::handle:horizontal::pressed {
     background-color: #35F0E0;
+}
+
+#ContainerFrame {
+    border-radius: 8px;
+    border: 1px solid #2A3342;
+}
+
+QMenu {
+    padding: 5px;
+    border: 1px solid #2A3342;
+    border-radius: 4px;
+}
+
+QMenu::item {
+    padding: 5px;
+}
+
+QMenu::item::selected {
+    background-color: #1C2330;
+    border-radius: 4px;
+}
+
+QMenuBar::item {
+    padding: 4px;
+    border-radius: 4px;
+}
+
+QMenuBar::item::selected {
+    background-color: #1C2330;
 }

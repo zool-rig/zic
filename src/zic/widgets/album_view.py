@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from zic.api import ZicApi
@@ -41,7 +41,12 @@ class SongWidget(QWidget):
         self.main_h_layout = QHBoxLayout(self)
 
     def init_widgets(self) -> None:
-        self.play_btn = make_toolbutton("icons/play.png", tooltip="Play")
+        self.play_btn = make_toolbutton(
+            "icons/play.png",
+            tooltip="Play",
+            icon_size=QSize(10, 10),
+            name="SmallToolButton",
+        )
         self.sound_wave = SoundWave(bars=4, height=30)
         self.title_lbl = QLabel(
             f"{self.song.track_number} - {self.song.title}"
@@ -51,7 +56,12 @@ class SongWidget(QWidget):
         seconds = int(self.song.duration)
         self.duration_lbl = QLabel(f"{seconds // 60:02d}:{seconds % 60:02d}")
         self.artist_credit_lbl = QLabel(self.song.artist_credit)
-        self.info_btn = make_toolbutton("icons/info.png", tooltip="Info")
+        self.info_btn = make_toolbutton(
+            "icons/info.png",
+            tooltip="Info",
+            icon_size=QSize(10, 10),
+            name="SmallToolButton",
+        )
 
     def set_layout(self) -> None:
         self.main_h_layout.addWidget(self.play_btn)
