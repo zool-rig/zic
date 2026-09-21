@@ -14,7 +14,11 @@ from PySide6.QtWidgets import (
 
 from zic.config import get_user_config
 from zic.resources import get_resource
-from zic.utils.qt_utils import make_toolbutton, set_label_font_size, style_completer_popup
+from zic.utils.qt_utils import (
+    make_toolbutton,
+    set_label_font_size,
+    style_completer_popup,
+)
 
 
 class FilterListWidget(QWidget):
@@ -92,7 +96,9 @@ class FilterListWidget(QWidget):
         self.list_widget.setSelectionMode(QAbstractItemView.ExtendedSelection)
         self.list_widget.setContextMenuPolicy(Qt.CustomContextMenu)
         set_label_font_size(self.title_lbl, 12)
-        completer = QCompleter(self.list_widget.model(), caseSensitivity=Qt.CaseInsensitive)
+        completer = QCompleter(
+            self.list_widget.model(), caseSensitivity=Qt.CaseInsensitive
+        )
         style_completer_popup(completer)
         self.search_edt.setCompleter(completer)
 

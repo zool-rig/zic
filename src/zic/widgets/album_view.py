@@ -205,6 +205,7 @@ class AlbumView(QWidget):
 
         set_label_font_size(self.title_lbl, 12)
         self.scroll_area.setWidgetResizable(True)
+        self.genres_lbl.setWordWrap(True)
 
     def set_album(self, album: Album, cover: AlbumCover | None) -> None:
         self.album = album

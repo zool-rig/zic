@@ -86,7 +86,12 @@ def ingest(
     )
 
 
-@cli.command("compute-genres")
+@cli.group("genres", invoke_without_command=False)
+def genres() -> None:
+    pass
+
+
+@genres.command("compute")
 @click.argument(
     "db",
     type=click.Path(
@@ -101,6 +106,23 @@ def compute_genres(db: Path) -> None:
     from zic.ingestor.genres import compute_genres_positions
 
     compute_genres_positions(db)
+
+
+@genres.command("vis")
+@click.argument(
+    "db",
+    type=click.Path(
+        exists=True,
+        dir_okay=False,
+        writable=True,
+        path_type=Path,
+    ),
+    help="Path to the SQLite database",
+)
+def visualize_genres(db: Path) -> None:
+    from zic.ingestor.genres import visualize_genres as do_visualize_genres
+
+    do_visualize_genres(db)
 
 
 def main() -> None:

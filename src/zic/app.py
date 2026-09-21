@@ -81,9 +81,9 @@ class ZicUI(QDialog):
         self.set_default()
         self.set_style_sheet()
 
-        timer = QTimer(self)
-        timer.timeout.connect(self.set_style_sheet)
-        timer.start(2000)
+        # timer = QTimer(self)
+        # timer.timeout.connect(self.set_style_sheet)
+        # timer.start(2000)
 
     def init_layouts(self) -> None:
         self.main_v_layout = QVBoxLayout(self)
@@ -116,7 +116,9 @@ class ZicUI(QDialog):
 
     def init_menu_bar(self) -> None:
         self.database_menu = self.menu_bar.addMenu("Database")
-        last_ingest_lbl = named_widget(DynLabel, "LabelAction",
+        last_ingest_lbl = named_widget(
+            DynLabel,
+            "LabelAction",
             lambda: self.api.last_ingest_date().strftime("%d/%m/%Y, %H:%M:%S"),
             prefix="Last scan : ",
         )

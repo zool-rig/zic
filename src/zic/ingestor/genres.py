@@ -1,5 +1,9 @@
 import json
 import sqlite3
+import tempfile
+import webbrowser
+import plotly.express as px
+
 from collections import defaultdict
 from itertools import combinations
 from pathlib import Path
@@ -105,3 +109,30 @@ def compute_genres_positions(db_path: Path) -> None:
             )
 
         conn.commit()
+
+
+def visualize_genres(db_path: Path) -> None:
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT name, position FROM genres WHERE position IS NOT NULL"
+        ).fetchall()
+
+    data = [
+        {"genre": name, "x": json.loads(pos)[0], "y": json.loads(pos)[1]}
+        for name, pos in rows
+    ]
+
+    fig = px.scatter(
+        data,
+        x="x",
+        y="y",
+        text="genre",
+        title="Musical genres proximity (2D projection of the MDS)",
+    )
+    fig.update_traces(textposition="top center", marker=dict(size=8))
+
+    tmp_path = Path(tempfile.gettempdir()) / next(tempfile._get_candidate_names())
+    tmp_path = tmp_path.with_suffix(".html")
+
+    fig.write_html(str(tmp_path))
+    webbrowser.open(f"file://{tmp_path}")

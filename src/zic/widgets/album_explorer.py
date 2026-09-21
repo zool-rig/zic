@@ -36,7 +36,12 @@ from zic.config import get_app_config, get_user_config
 from zic.models.album import Album, AlbumCover
 from zic.models.artist import Artist
 from zic.models.genre import Genre
-from zic.utils.qt_utils import SignalsOFF, make_toolbutton, set_label_font_size, style_completer_popup
+from zic.utils.qt_utils import (
+    SignalsOFF,
+    make_toolbutton,
+    set_label_font_size,
+    style_completer_popup,
+)
 from zic.utils.query_builder import QueryBuilder
 from zic.widgets.cover_thumbnail import DEFAULT_COVER, CoverThumbnail
 from zic.widgets.rules import VRule
