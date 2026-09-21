@@ -128,7 +128,7 @@ def visualize_genres(db_path: Path) -> None:
         text="genre",
         title="Musical genres proximity (2D projection of the MDS)",
     )
-    fig.update_traces(textposition="top center", marker=dict(size=8))
+    fig.update_traces(textposition="top center", marker={"size": 8})
 
     tmp_path = Path(tempfile.gettempdir()) / next(tempfile._get_candidate_names())
     tmp_path = tmp_path.with_suffix(".html")
