@@ -2,13 +2,12 @@ import json
 import sqlite3
 import tempfile
 import webbrowser
-import plotly.express as px
-
 from collections import defaultdict
 from itertools import combinations
 from pathlib import Path
 
 import numpy as np
+import plotly.express as px
 
 from zic.logging import get_logger
 

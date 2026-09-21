@@ -3,17 +3,17 @@ import importlib.metadata
 from PySide6.QtCore import QEvent, QObject, QProcess, QSize, Qt, QTimer
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
-    QVBoxLayout,
-    QHBoxLayout,
-    QDialog,
-    QMenuBar,
-    QStackedWidget,
-    QSplitter,
-    QWidgetAction,
     QApplication,
+    QDialog,
     QFrame,
-    QToolButton,
+    QHBoxLayout,
+    QMenuBar,
     QMessageBox,
+    QSplitter,
+    QStackedWidget,
+    QToolButton,
+    QVBoxLayout,
+    QWidgetAction,
 )
 
 from zic.api import ZicApi

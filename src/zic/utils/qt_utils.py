@@ -1,7 +1,7 @@
 import os
 from typing import Any
 
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import (
     QApplication,

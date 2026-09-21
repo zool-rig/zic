@@ -20,6 +20,7 @@ from PySide6.QtGui import QAction, QColor, QCursor, QWheelEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCompleter,
+    QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
@@ -28,7 +29,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QWidgetAction,
-    QFrame,
 )
 
 from zic.api import ZicApi

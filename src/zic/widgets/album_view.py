@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt, Signal, QSize
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from zic.api import ZicApi

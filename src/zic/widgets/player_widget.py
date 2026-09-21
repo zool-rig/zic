@@ -1,4 +1,4 @@
-from PySide6.QtCore import QEvent, QObject, Qt, QTimer, QUrl, Signal, QSize
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
 from PySide6.QtWidgets import (
