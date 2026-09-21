@@ -18,36 +18,62 @@ LOGGER = get_logger("Genre Pos")
 def build_similarity_matrix(
     conn: sqlite3.Connection, genres: list[tuple[int, str]]
 ) -> np.ndarray:
-    """Builds similarity from co-occurrence within the user's own library:
-    two genres that are frequently linked to the same album (album_genres)
-    are considered close. Fully local, no external dependency.
+    """Builds similarity from co-occurrence within the user's own library,
+    using Positive PMI (with discounting) instead of raw normalized counts,
+    so that frequent/generic tags (e.g. "rock") don't dominate purely
+    because of their volume.
     """
     n = len(genres)
     index_by_id = {genre_id: i for i, (genre_id, _) in enumerate(genres)}
 
     albums_genres: dict[int, set[int]] = defaultdict(set)
-    for album_id, genre_id in conn.execute(
-        "SELECT album_id, genre_id FROM album_genres"
-    ):
+    for album_id, genre_id in conn.execute("SELECT album_id, genre_id FROM album_genres"):
         if genre_id in index_by_id:
             albums_genres[album_id].add(genre_id)
 
+    total_albums = len(albums_genres)
+    if total_albums == 0:
+        return np.eye(n)
+
     co_occurrence = np.zeros((n, n))
+    marginal = np.zeros(n)  # Number of albums containing each genre
+
     for genre_ids in albums_genres.values():
+        for gid in genre_ids:
+            marginal[index_by_id[gid]] += 1
         for gi, gj in combinations(genre_ids, 2):
             i, j = index_by_id[gi], index_by_id[gj]
             co_occurrence[i, j] += 1
             co_occurrence[j, i] += 1
 
-    max_count = co_occurrence.max()
-    similarity = co_occurrence / max_count if max_count > 0 else co_occurrence
+    # P(i,j), P(i), P(j)
+    p_ij = co_occurrence / total_albums
+    p_i = marginal / total_albums
+    outer = np.outer(p_i, p_i)
+
+    # PMI (only where co_occurrence > 0, otherwise log(0))
+    pmi = np.zeros((n, n))
+    nonzero = co_occurrence > 0
+    with np.errstate(divide="ignore", invalid="ignore"):
+        pmi[nonzero] = np.log(p_ij[nonzero] / outer[nonzero])
+
+    # Discounting: mitigates rare pairs to avoid soaring PMIs
+    # on a simple chance of single co-occurrence (Pantel & Lin, 2002)
+    min_marginal = np.minimum.outer(marginal, marginal)
+    discount = (co_occurrence / (co_occurrence + 1)) * (min_marginal / (min_marginal + 1))
+    pmi *= discount
+
+    # Positive PMI: we ignore the associations "less frequent than chance"
+    ppmi = np.clip(pmi, 0, None)
+    np.fill_diagonal(ppmi, 0)
+
+    max_val = ppmi.max()
+    similarity = ppmi / max_val if max_val > 0 else ppmi
     np.fill_diagonal(similarity, 1.0)
 
     for i, (_, name) in enumerate(genres):
         linked = int(np.count_nonzero(co_occurrence[i]))
-        LOGGER.info(
-            f"{name}: co-occurs with {linked} other genre(s) across the library"
-        )
+        LOGGER.info(f"{name}: co-occurs with {linked} other genre(s) across the library")
 
     return similarity
 
