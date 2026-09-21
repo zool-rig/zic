@@ -1,4 +1,3 @@
-import os
 from typing import Any
 
 from PySide6.QtCore import QSize, Qt
