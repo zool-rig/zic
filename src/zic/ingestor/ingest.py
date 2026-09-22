@@ -106,6 +106,8 @@ LEADING_ARTICLE_RE = re.compile(r"^(the|a|an|le|la|les|un|une|des)\s+", re.IGNOR
 # clean_name) in the DB regardless, so nothing meaningful is ever lost.
 ARTIST_SPLIT_RE = re.compile(r"\s*(?:,|;|/|&|\bfeat\.?\b|\bft\.?\b)\s*", re.IGNORECASE)
 
+FILES_PER_COMMIT = 10
+
 LOGGER = get_logger("Ingest")
 
 
@@ -555,7 +557,7 @@ def get_picture_url_content(url: str, key: StringLike, token: StringLike) -> byt
     return response.content
 
 
-def extract_cover_thumbnail(path: Path | str, key: StringLike, token: StringLike):
+def extract_cover_thumbnail(path: Path | str, key: StringLike, token: StringLike) -> tuple[bytes, str, int, int, str] | None:
     """Extracts, downsizes and compresses the embedded artwork so it fits
     the DB's 100KB CHECK constraint. Returns
     (jpeg_bytes, mime_type, width, height, dominant_color_hex) or None if
@@ -566,6 +568,8 @@ def extract_cover_thumbnail(path: Path | str, key: StringLike, token: StringLike
         raw = get_embedded_picture_bytes(path)
     elif path.startswith("http"):
         raw = get_picture_url_content(path, key, token)
+    else:
+        return None
     if not raw:
         return None
     try:
@@ -838,9 +842,11 @@ def ingest(
         cover_attempted: set[int] = set()
         discogs_albums_data: dict[int, dict[str, Any]] = {}
         file_count = 0
+        files_to_commit = 0
 
         for path in find_audio_files(root):
             file_count += 1
+            files_to_commit += 1
             try:
                 status = ingest_file(
                     conn,
@@ -857,9 +863,11 @@ def ingest(
                 counts["error"] += 1
                 LOGGER.error(f"Failed to ingest '{path.relative_to(root)}': {e!r}")
 
-        set_metadata(conn, "last_ingest", datetime.now(UTC).isoformat())
+            if files_to_commit == FILES_PER_COMMIT:
+                conn.commit()
+                files_to_commit = 0
 
-        conn.commit()
+        set_metadata(conn, "last_ingest", datetime.now(UTC).isoformat())
 
         LOGGER.info("Ingest finished !")
         LOGGER.info(f"File count : {file_count}")
