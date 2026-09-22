@@ -27,7 +27,7 @@ class Playlist:
             self.fetch_func = self.fetch_funcs.pop(0)
 
     def next(self) -> Song | None:
-        if self.current is not None:
+        if self.current is not None and self.songs is not None:
             self.played.append(self.current)
             self.played_song_ids.add(self.current.id)
 
