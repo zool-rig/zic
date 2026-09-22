@@ -70,6 +70,7 @@ class ZicUI(QDialog):
         self.compute_genres_action = None
 
         self.ingest_process = QProcess(self)
+        self.compute_genres_process = QProcess(self)
 
         self.init_ui()
 
@@ -189,6 +190,8 @@ class ZicUI(QDialog):
         self.player_widget.artist_url_clicked.connect(self.jump_to_artists)
         self.ingest_process.finished.connect(self.on_ingest_process_finished)
         self.ingest_process.errorOccurred.connect(self.on_ingest_process_failed)
+        self.compute_genres_process.finished.connect(self.on_compute_genres_finished)
+        self.compute_genres_process.errorOccurred.connect(self.on_compute_genres_failed)
 
     def set_default(self) -> None:
         self.setWindowFlags(Qt.Window)
@@ -417,8 +420,22 @@ class ZicUI(QDialog):
         )
 
     def compute_genres(self) -> None:
-        self.ingest_process.start(
+        self.compute_genres_process.start(
             "zic", ["genres", "compute", str(get_app_config().db_path)]
+        )
+
+    def on_compute_genres_finished(
+        self, exit_code: int, exit_status: QProcess.ExitStatus   
+    ) -> None:
+        if exit_code == 0 and exit_status == QProcess.ExitStatus.NormalExit:
+            QMessageBox.information(self, "Database", "Genre positions computation finished")
+            self.reload()
+
+    def on_compute_genres_failed(self, error: QProcess.ProcessError) -> None:
+        QMessageBox.warning(
+            self,
+            "Database",
+            f"Genre position computation failed : {error.name}\n{self.compute_genres_process.errorString()}",
         )
 
     @property
