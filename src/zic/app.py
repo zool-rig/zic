@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QToolButton,
     QVBoxLayout,
     QWidgetAction,
+    QWidget,
 )
 
 from zic.api import ZicApi
@@ -119,7 +120,7 @@ class ZicUI(QDialog):
         last_ingest_lbl = named_widget(
             DynLabel,
             "LabelAction",
-            lambda: self.api.last_ingest_date().strftime("%d/%m/%Y, %H:%M:%S"),
+            self.get_last_ingest_date,
             prefix="Last scan : ",
         )
         last_ingest_lbl.setFixedWidth(200)
@@ -420,6 +421,20 @@ class ZicUI(QDialog):
             "zic", ["genres", "compute", str(get_app_config().db_path)]
         )
 
+    @property
+    def text_edits(self) -> list[QWidget]:
+        return [
+            self.album_explorer.search_edt,
+            self.artist_filter_widget.search_edt,
+            self.genre_filter_widget.search_edt,
+        ]
+
+    def get_last_ingest_date(self) -> str:
+        date = self.api.last_ingest_date()
+        if date is None:
+            return "Never"
+        return date.strftime("%d/%m/%Y, %H:%M:%S")
+
 
 class GlobalKeyFilter(QObject):
     def __init__(self, app_instance: ZicUI) -> None:
@@ -431,7 +446,7 @@ class GlobalKeyFilter(QObject):
             Qt.Key_Space,
             Qt.Key_Left,
             Qt.Key_Right,
-        }:
+        } and not any(widget.hasFocus() for widget in self.app_instance.text_edits):
             self.app_instance.keyPressEvent(event)
             return True
         return super().eventFilter(obj, event)

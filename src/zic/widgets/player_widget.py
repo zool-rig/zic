@@ -611,6 +611,9 @@ class PlayerWidget(QWidget):
             self.audio_output.setDevice(new_default)
 
     def toggle_play_pause(self) -> None:
+        if self.current_song is None:
+            return
+        
         if self.playback_widget.playing:
             self.playback_widget.pause()
         else:
