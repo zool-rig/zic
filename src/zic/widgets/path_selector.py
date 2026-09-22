@@ -42,8 +42,8 @@ class PathSelector(QWidget):
     def init_widgets(self) -> None:
         self.path_edt = QLineEdit()
         self.browse_btn = make_toolbutton(
-            "icons/artist.png", tooltip="Browse"
-        )  # TODO change icon
+            "icons/folder.png", tooltip="Browse"
+        )
 
     def set_layout(self) -> None:
         self.main_h_layout.addWidget(self.path_edt)

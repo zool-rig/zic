@@ -15,11 +15,15 @@ def first_launch() -> None:
 
 def launch_ui() -> None:
     from PySide6.QtWidgets import QApplication
+    from PySide6.QtGui import QIcon
 
     from zic.app import GlobalKeyFilter, ZicUI
     from zic.config import app_config_exists
+    from zic.resources import get_resource
 
     qapp = QApplication(sys.argv)
+    qapp.setWindowIcon(QIcon(get_resource("icons/zic.ico")))
+    
     if not app_config_exists():
         first_launch()
     app = ZicUI()
@@ -29,10 +33,14 @@ def launch_ui() -> None:
     sys.exit(qapp.exec())
 
 
-@click.group(invoke_without_command=True)
+@click.group(
+    invoke_without_command=True,
+    epilog="Run the GUI : zic"
+)
 @click.pass_context
-@click.option("-V", "version", is_flag=True)
+@click.option("-V", "version", is_flag=True, help="Show the current version of ZIC")
 def cli(ctx: click.Context, version: bool) -> None:
+    """A local-library desktop music player with album/genre browsing and genre-aware smart playlists."""
     if version:
         import importlib.metadata
 
@@ -43,7 +51,10 @@ def cli(ctx: click.Context, version: bool) -> None:
         launch_ui()
 
 
-@cli.command(help="Ingests an audio library (mp3/m4a) into a SQLite database.")
+@cli.command(
+    help="Ingests an audio library (mp3/m4a) into a SQLite database.",
+    epilog="Exemple:\n\n  zic ingest ~/Music"
+)
 @click.argument(
     "folder",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
@@ -86,12 +97,19 @@ def ingest(
     )
 
 
-@cli.group("genres", invoke_without_command=False)
+@cli.group(
+    "genres",
+    invoke_without_command=False,
+    help="Manage genre proximity positions used to build genre-aware playlists."
+)
 def genres() -> None:
     pass
 
 
-@genres.command("compute")
+@genres.command(
+    "compute",
+    epilog="Example:\n\n  zic genres compute ~/Music/.db",
+)
 @click.argument(
     "db",
     type=click.Path(
@@ -103,12 +121,23 @@ def genres() -> None:
     help="Path to the SQLite database",
 )
 def compute_genres(db: Path) -> None:
+    """Computes proximity positions for every genre in the library.
+
+    Positions are derived from how genres co-occur across your albums
+    (Positive PMI + classical MDS), so they reflect your own collection
+    rather than a fixed external taxonomy. Run this after a fresh import
+    or whenever you've ingested enough new albums that genre relationships
+    may have shifted. Re-run any time; existing positions are overwritten.
+    """
     from zic.ingestor.genres import compute_genres_positions
 
     compute_genres_positions(db)
 
 
-@genres.command("vis")
+@genres.command(
+    "vis",
+    epilog="Example:\n\n  zic genres vis ~/Music/.db",
+)
 @click.argument(
     "db",
     type=click.Path(
@@ -120,6 +149,12 @@ def compute_genres(db: Path) -> None:
     help="Path to the SQLite database",
 )
 def visualize_genres(db: Path) -> None:
+    """Opens an interactive 2D plot of the computed genre positions.
+
+    Requires positions to have been computed first (see `zic genres compute`).
+    Opens in your default web browser via Plotly; genres with no computed
+    position are omitted from the plot.
+    """
     from zic.ingestor.genres import visualize_genres as do_visualize_genres
 
     do_visualize_genres(db)

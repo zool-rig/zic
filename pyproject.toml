@@ -2,7 +2,7 @@
 name = "zic"
 version = "0.1.0"
 keywords = ["release-date:2026-09-20"]
-description = "A local music player desktop app"
+description = "A local-library desktop music player with album/genre browsing and genre-aware smart playlists."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

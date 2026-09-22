@@ -9,6 +9,7 @@ from zic.utils.db_utils import is_valid_sqlite_file
 from zic.utils.qt_utils import set_label_font_size
 from zic.widgets.path_selector import PathSelector
 from zic.widgets.rules import HRule
+from zic.resources import get_resource
 
 
 class FirstLaunchDialog(QDialog):
@@ -36,6 +37,7 @@ class FirstLaunchDialog(QDialog):
         self.set_layout()
         self.set_connections()
         self.set_default()
+        self.set_style_sheet()
 
     def init_layouts(self) -> None:
         self.main_v_layout = QVBoxLayout(self)
@@ -76,6 +78,15 @@ class FirstLaunchDialog(QDialog):
         self.instruction_lbl.setAlignment(Qt.AlignCenter)
         self.bottom_h_layout.setAlignment(Qt.AlignRight)
         self.ok_btn.setEnabled(False)
+
+    def set_style_sheet(self) -> None:
+        qss_path = get_resource("style/style.qss")
+        icons_path = get_resource("icons")
+        with open(qss_path, "r") as f:
+            stylesheet = f.read()
+        # Replace placeholder with actual icon path
+        stylesheet = stylesheet.replace("{ICON_PATH}", icons_path)
+        self.setStyleSheet(stylesheet)
 
     def on_root_dir_changed(self, path: Path) -> None:
         if path.exists():

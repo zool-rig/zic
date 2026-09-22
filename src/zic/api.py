@@ -1,5 +1,7 @@
 import sqlite3
 import time
+import math
+
 from collections import defaultdict
 from datetime import datetime
 from enum import Enum
@@ -362,16 +364,69 @@ class ZicApi:
         )
         return songs
 
+    def get_rest_discography_from_album(self, album: Album, exclude_ids: set[int] | None = None) -> list[Song]:
+        start_time = time.perf_counter()
+        query = self.get_song_query()
+        query.push("AND songs.album_id !=")
+        query.push_bind(album.id)
+        query.push("AND album_artist_id =")
+        query.push_bind(album.artist.id)
+
+        if exclude_ids:
+            query.push("AND songs.id NOT IN")
+            query.push_binds(exclude_ids)
+        
+        with RowFactory(self.connection, sqlite3.Row):
+            cur = self.connection.execute(*query.build())
+            rows = cur.fetchall()
+
+        songs = self.get_songs_from_rows(rows)
+        LOGGER.debug(
+            f"{len(songs)} songs from {album.artist.name} fetched in {time.perf_counter() - start_time:.3f}s"
+        )
+        return songs
+
+    def get_near_songs_from_album(self, album: Album, exclude_ids: set[int] | None = None) -> list[Song]:
+        start_time = time.perf_counter()
+        near_genres = album.genres[:]
+        for genre in album.genres:
+            near_genres.extend(self.get_near_genres(genre))
+        near_genres_ids = {g.id for g in near_genres}
+        
+        query = self.get_song_query()
+        query.push("AND genre_id IN")
+        query.push_binds(near_genres_ids)
+
+        if exclude_ids:
+            query.push("AND songs.id NOT IN")
+            query.push_binds(exclude_ids)
+
+        query.push(f"ORDER BY RANDOM() LIMIT {SONG_CHUNK_LIMIT}")
+
+        with RowFactory(self.connection, sqlite3.Row):
+            cur = self.connection.execute(*query.build())
+            rows = cur.fetchall()
+
+        songs = self.get_songs_from_rows(rows)
+        LOGGER.debug(
+            f"{len(songs)} similar songs fetched in {time.perf_counter() - start_time:.3f}s"
+        )
+        return songs
+
     def get_album_playlist(self, album: Album) -> None:
         return Playlist(
             lambda *_: self.get_album_songs(album),
-            self.fetch_random_songs,  # TODO : replace by a similarity algo
+            lambda exclude_ids: self.get_rest_discography_from_album(album, exclude_ids=exclude_ids),
+            lambda exclude_ids: self.get_near_songs_from_album(album, exclude_ids=exclude_ids),
+            self.fetch_random_songs,
         )
 
     def get_shuffle_album_playlist(self, album: Album) -> None:
         return Playlist(
             lambda *_: self.get_album_songs(album, order_mode=AlbumSongOrder.RANDOM),
-            self.fetch_random_songs,  # TODO : replace by a similarity algo
+            lambda exclude_ids: self.get_rest_discography_from_album(album, exclude_ids=exclude_ids),
+            lambda exclude_ids: self.get_near_songs_from_album(album, exclude_ids=exclude_ids),
+            self.fetch_random_songs,
         )
 
     def get_song_playlist(self, album: Album, song: Song) -> None:
@@ -379,7 +434,9 @@ class ZicApi:
             lambda *_: self.get_album_songs(
                 album, order_mode=AlbumSongOrder.SONG_ID, song=song
             ),
-            self.fetch_random_songs,  # TODO : replace by a similarity algo
+            lambda exclude_ids: self.get_rest_discography_from_album(album, exclude_ids=exclude_ids),
+            lambda exclude_ids: self.get_near_songs_from_album(album, exclude_ids=exclude_ids),
+            self.fetch_random_songs,
         )
 
     def get_song_artists(self, song: Song) -> list[Artist]:
@@ -409,3 +466,10 @@ class ZicApi:
         last_ingest = self.get_metadata("last_ingest")
         if last_ingest:
             return datetime.fromisoformat(last_ingest)
+
+    def _genre_distance(self, genre_a: Genre, genre_b: Genre) -> float:
+        return math.sqrt(sum((x - y) ** 2 for x, y in zip(genre_a.position, genre_b.position)))
+
+    def get_near_genres(self, genre: Genre, max_genres: int = 5) -> list[Genre]:
+        ranked = sorted([(g, self._genre_distance(genre, g)) for g in self.genres() if g != genre], key=lambda x: x[1])
+        return [genre for genre, _ in ranked[:max_genres]]

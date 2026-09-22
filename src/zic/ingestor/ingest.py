@@ -417,8 +417,8 @@ def get_album_discogs_data(
             result["year"] = r["year"]
         if "genre" in r:
             result["genres"].update(g.strip().lower() for g in r["genre"])
-        if "style" in r:
-            result["genres"].update(g.strip().lower() for g in r["style"])
+        # if "style" in r:
+        #     result["genres"].update(g.strip().lower() for g in r["style"])
 
     return result
 

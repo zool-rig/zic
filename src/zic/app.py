@@ -1,7 +1,7 @@
 import importlib.metadata
 
 from PySide6.QtCore import QEvent, QObject, QProcess, QSize, Qt, QTimer
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QKeyEvent, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -192,6 +192,7 @@ class ZicUI(QDialog):
     def set_default(self) -> None:
         self.setWindowFlags(Qt.Window)
         self.setWindowTitle(f"ZIC - {importlib.metadata.version('zic')}")
+        self.setWindowIcon(QIcon(get_resource("icons/zic.ico")))
 
         for layout, alignment in (
             (self.main_h_layout, Qt.AlignLeft),
@@ -209,7 +210,7 @@ class ZicUI(QDialog):
         self.h_splitter.setStretchFactor(0, 1)
         self.h_splitter.setStretchFactor(1, 3)
         self.h_splitter.setStretchFactor(2, 1)
-        self.resize(QSize(1300, 760))
+        self.resize(QSize(1340, 760))
 
     def set_style_sheet(self) -> None:
         qss_path = get_resource("style/style.qss")
@@ -416,7 +417,7 @@ class ZicUI(QDialog):
 
     def compute_genres(self) -> None:
         self.ingest_process.start(
-            "zic", ["compute-genres", str(get_app_config().db_path)]
+            "zic", ["genres", "compute", str(get_app_config().db_path)]
         )
 
 
