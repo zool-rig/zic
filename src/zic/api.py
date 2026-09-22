@@ -416,7 +416,7 @@ class ZicApi:
         )
         return songs
 
-    def get_album_playlist(self, album: Album) -> None:
+    def get_album_playlist(self, album: Album) -> Playlist:
         return Playlist(
             lambda *_: self.get_album_songs(album),
             lambda exclude_ids: self.get_rest_discography_from_album(album, exclude_ids=exclude_ids),
@@ -424,7 +424,7 @@ class ZicApi:
             self.fetch_random_songs,
         )
 
-    def get_shuffle_album_playlist(self, album: Album) -> None:
+    def get_shuffle_album_playlist(self, album: Album) -> Playlist:
         return Playlist(
             lambda *_: self.get_album_songs(album, order_mode=AlbumSongOrder.RANDOM),
             lambda exclude_ids: self.get_rest_discography_from_album(album, exclude_ids=exclude_ids),
@@ -432,7 +432,7 @@ class ZicApi:
             self.fetch_random_songs,
         )
 
-    def get_song_playlist(self, album: Album, song: Song) -> None:
+    def get_song_playlist(self, album: Album, song: Song) -> Playlist:
         return Playlist(
             lambda *_: self.get_album_songs(
                 album, order_mode=AlbumSongOrder.SONG_ID, song=song
