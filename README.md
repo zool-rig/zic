@@ -105,6 +105,9 @@ zic genres vis ~/Music/.db
 
 ![genres-visualization](images/genres-vis.png)
 
+>[!NOTE]
+>These visualizations are in 2D, so they are partial representations of the real space which is in 8 dimensions
+
 ## Configuration
 
 ### App config
