@@ -389,6 +389,9 @@ class ZicApi:
     def get_near_songs_from_album(self, album: Album, exclude_ids: set[int] | None = None) -> list[Song]:
         start_time = time.perf_counter()
         near_genres = album.genres[:]
+        if not near_genres:
+            return []
+        
         for genre in album.genres:
             near_genres.extend(self.get_near_genres(genre))
         near_genres_ids = {g.id for g in near_genres}
