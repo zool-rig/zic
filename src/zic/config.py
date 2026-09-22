@@ -19,7 +19,7 @@ _APP_CONFIG_LOCK = threading.RLock()
 _USER_CONFIG_LOCK = threading.RLock()
 
 
-class ConfigNotFoundError(BaseException):
+class ConfigNotFoundError(Exception):
     pass
 
 
