@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -13,6 +14,9 @@ from zic.logging import get_logger
 LOGGER = get_logger("Config")
 APP_CONFIG_PATH = Path(user_config_dir("Zic")) / "app_config.toml"
 USER_CONFIG_PATH = Path(user_data_dir("Zic")) / "user_config.json"
+
+_APP_CONFIG_LOCK = threading.RLock()
+_USER_CONFIG_LOCK = threading.RLock()
 
 
 class ConfigNotFoundError(BaseException):
@@ -37,7 +41,10 @@ class AppConfig:
         if not APP_CONFIG_PATH.exists():
             raise ConfigNotFoundError(f"App config file not found : {APP_CONFIG_PATH}.")
         with APP_CONFIG_PATH.open("r") as f:
-            config = cls(**toml.load(f))
+            data = toml.load(f)
+        data["db_path"] = Path(data["db_path"])
+        data["root_dir"] = Path(data["root_dir"])
+        config = cls(**data)
         LOGGER.debug(f"App config loaded  : {APP_CONFIG_PATH}")
         return config
 
@@ -112,16 +119,22 @@ USER_CONFIG: UserConfig | None = None
 def get_app_config() -> AppConfig:
     global APP_CONFIG
     if APP_CONFIG is None:
-        LOGGER.debug(f"App config path : {APP_CONFIG_PATH}")
-        APP_CONFIG = AppConfig.load()
+        with _APP_CONFIG_LOCK:
+            if APP_CONFIG is None:
+                LOGGER.debug(f"App config path : {APP_CONFIG_PATH}")
+                APP_CONFIG = AppConfig.load()
+
     return APP_CONFIG
 
 
 def get_user_config() -> UserConfig:
     global USER_CONFIG
     if USER_CONFIG is None:
-        LOGGER.debug(f"User config path : {USER_CONFIG_PATH}")
-        USER_CONFIG = UserConfig.load()
+        with _USER_CONFIG_LOCK:
+            if USER_CONFIG is None:
+                LOGGER.debug(f"User config path : {USER_CONFIG_PATH}")
+                USER_CONFIG = UserConfig.load()
+
     return USER_CONFIG
 
 
