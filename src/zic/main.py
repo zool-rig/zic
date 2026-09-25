@@ -14,8 +14,8 @@ def first_launch() -> None:
 
 
 def launch_ui() -> None:
-    from PySide6.QtWidgets import QApplication
     from PySide6.QtGui import QIcon
+    from PySide6.QtWidgets import QApplication
 
     from zic.app import GlobalKeyFilter, ZicUI
     from zic.config import app_config_exists

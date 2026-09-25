@@ -1,7 +1,6 @@
+import math
 import sqlite3
 import time
-import math
-
 from collections import defaultdict
 from datetime import datetime
 from enum import Enum

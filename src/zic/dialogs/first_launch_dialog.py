@@ -2,21 +2,21 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QVBoxLayout,
+    QDialog,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QLabel,
-    QFileDialog,
     QPushButton,
-    QDialog,
+    QVBoxLayout,
 )
 
 from zic.config import AppConfig
+from zic.resources import get_resource
 from zic.utils.db_utils import is_valid_sqlite_file
 from zic.utils.qt_utils import set_label_font_size
 from zic.widgets.path_selector import PathSelector
 from zic.widgets.rules import HRule
-from zic.resources import get_resource
 
 
 class FirstLaunchDialog(QDialog):
