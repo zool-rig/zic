@@ -44,7 +44,10 @@ class AppConfig:
             data = toml.load(f)
         data["db_path"] = Path(data["db_path"])
         data["root_dir"] = Path(data["root_dir"])
-        config = cls(**data)
+        config = cls(
+            data["db_path"],
+            data["root_dir"],
+        )
         LOGGER.debug(f"App config loaded  : {APP_CONFIG_PATH}")
         return config
 
@@ -100,7 +103,16 @@ class UserConfig:
             return config
 
         with USER_CONFIG_PATH.open("r") as f:
-            config = cls(**json.load(f))
+            data = json.load(f)
+            config = cls(
+                data["artists_descending_order"],
+                data["genres_descending_order"],
+                data["volume"],
+                data["muted"],
+                data["explorer_sort_order"],
+                data["explorer_sorting_mode"],
+                data["key_bindings"],
+            )
         LOGGER.debug(f"User config loaded : {USER_CONFIG_PATH}")
         return config
 
