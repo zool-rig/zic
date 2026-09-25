@@ -63,7 +63,7 @@ class PathSelector(QWidget):
         with SignalsOFF(self.path_edt):
             self.path_edt.setText(str(path))
 
-    def is_valid_path(self) -> None:
+    def is_valid_path(self) -> bool:
         return bool(self.path_edt.text()) and self.path.exists()
 
     def check_path(self) -> None:

@@ -7,6 +7,18 @@ RowFactoryOptions = (
     type[sqlite3.Row] | Callable[[sqlite3.Cursor, tuple[Any, ...]], object] | None
 )
 
+EXPECTED_TABLES = {
+    "songs",
+    "albums",
+    "artists",
+    "genres",
+    "covers_thumbnails",
+    "album_genres",
+    "plays",
+    "song_artists",
+    "metadata",
+}
+
 
 class RowFactory:
     def __init__(self, conn: sqlite3.Connection, factory: RowFactoryOptions) -> None:
@@ -25,14 +37,29 @@ def is_valid_sqlite_file(db_path: os.PathLike) -> bool:
     if not os.path.exists(db_path):
         return False
 
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
+    with sqlite3.connect(db_path) as conn:
+        return check_database(conn)
 
+
+def check_database(conn: sqlite3.Connection) -> bool:
     try:
-        cur.execute("PRAGMA integrity_check")
+        cur = conn.execute("PRAGMA integrity_check")
+        result = cur.fetchone()
+        if result is None or result[0] != "ok":
+            return False
 
-        return True
+        cur = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+        existing_tables = {row[0] for row in cur.fetchall()}
+
+        # Either a fresh/empty file (will be initialized on first ingest)
+        # or an existing ZIC database with its core tables present.
+        return not existing_tables or EXPECTED_TABLES.issubset(existing_tables)
     except sqlite3.DatabaseError:
         return False
-    finally:
-        conn.close()
+
+
+class InvalidDatabaseError(Exception):
+    def __init__(self, db_path: os.PathLike) -> None:
+        super().__init__(f"Databse {db_path} is corrupted or not a valid zic database.")

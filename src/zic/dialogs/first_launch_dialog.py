@@ -33,6 +33,7 @@ class FirstLaunchDialog(QDialog):
         self.instruction_lbl = None
         self.root_dir_path_selector = None
         self.db_path_selector = None
+        self.error_message_lbl = None
         self.ok_btn = None
         self.cancel_btn = None
 
@@ -58,6 +59,7 @@ class FirstLaunchDialog(QDialog):
         )
         self.root_dir_path_selector = PathSelector()
         self.db_path_selector = PathSelector(browse_method=QFileDialog.getOpenFileName)
+        self.error_message_lbl = QLabel()
         self.ok_btn = QPushButton("Ok")
         self.cancel_btn = QPushButton("Cancel")
 
@@ -67,6 +69,7 @@ class FirstLaunchDialog(QDialog):
         self.main_v_layout.addLayout(self.form_layout)
         self.form_layout.addRow("Library root directory :", self.root_dir_path_selector)
         self.form_layout.addRow("Database location :", self.db_path_selector)
+        self.main_v_layout.addWidget(self.error_message_lbl)
         self.main_v_layout.addWidget(HRule())
         self.main_v_layout.addLayout(self.bottom_h_layout)
         self.bottom_h_layout.addWidget(self.ok_btn)
@@ -85,6 +88,7 @@ class FirstLaunchDialog(QDialog):
         self.instruction_lbl.setAlignment(Qt.AlignCenter)
         self.bottom_h_layout.setAlignment(Qt.AlignRight)
         self.ok_btn.setEnabled(False)
+        self.error_message_lbl.hide()
 
     def set_style_sheet(self) -> None:
         qss_path = get_resource("style/style.qss")
@@ -94,6 +98,7 @@ class FirstLaunchDialog(QDialog):
         # Replace placeholder with actual icon path
         stylesheet = stylesheet.replace("{ICON_PATH}", icons_path)
         self.setStyleSheet(stylesheet)
+        self.error_message_lbl.setStyleSheet("color: red;")
 
     def on_root_dir_changed(self, path: Path) -> None:
         if path.exists():
@@ -103,11 +108,24 @@ class FirstLaunchDialog(QDialog):
         self.check_inputs()
 
     def check_inputs(self) -> None:
-        self.ok_btn.setEnabled(
-            self.root_dir_path_selector.is_valid_path()
-            and self.db_path_selector.is_valid_path()
-            and is_valid_sqlite_file(self.db_path_selector.path)
-        )
+        if not self.root_dir_path_selector.is_valid_path():
+            self.error_message_lbl.setText("Root directory is not valid")
+            self.error_message_lbl.show()
+            self.ok_btn.setEnabled(False)
+            return False
+        if not self.db_path_selector.is_valid_path():
+            self.error_message_lbl.setText("Database file path is not valid")
+            self.error_message_lbl.show()
+            self.ok_btn.setEnabled(False)
+            return False
+        if not is_valid_sqlite_file(self.db_path_selector):
+            self.error_message_lbl.setText("Database may be corrupted or not a valid ZIC's database")
+            self.error_message_lbl.show()
+            self.ok_btn.setEnabled(False)
+            return False
+        self.error_message_lbl.hide()
+        self.ok_btn.setEnabled(True)
+        return True
 
     def validate_inputs(self) -> None:
         config = AppConfig(

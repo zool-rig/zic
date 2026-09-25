@@ -13,7 +13,7 @@ from zic.models.artist import Artist
 from zic.models.genre import Genre
 from zic.models.playlist import Playlist
 from zic.models.song import Song
-from zic.utils.db_utils import RowFactory
+from zic.utils.db_utils import RowFactory, check_database, InvalidDatabaseError
 from zic.utils.query_builder import QueryBuilder
 
 SONG_CHUNK_LIMIT = 50
@@ -32,6 +32,8 @@ class ZicApi:
         db_path = get_app_config().db_path
         conn = sqlite3.connect(db_path)
         conn.execute("PRAGMA foreign_keys = ON")
+        if not check_database(conn):
+            raise InvalidDatabaseError(db_path)
         LOGGER.debug(f"Connected to database {db_path}")
         return conn
 
