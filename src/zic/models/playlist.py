@@ -31,21 +31,26 @@ class Playlist:
             self.played.append(self.current)
             self.played_song_ids.add(self.current.id)
 
+        self.current = self._advance()
+        return self.current
+
+    def _advance(self) -> Song | None:
+        """Returns the next song to play, transparently switching to the
+        next fetch source(s) as needed. Recording history is the caller's
+        (next()'s) responsibility, done exactly once per public call —
+        this loop must never trigger a second append when it hops between
+        sources."""
         if self.future:
-            self.current = self.future.pop()
-            return self.current
+            return self.future.pop()
 
-        if self.songs is None:
-            return
-
-        try:
-            self.current = next(self.songs)
-            return self.current
-        except StopIteration:
-            if self.fetch_funcs:
-                self.fetch_func = self.fetch_funcs.pop(0)
-            self.songs = self.fetch_songs()
-            return self.next()
+        while self.songs is not None:
+            try:
+                return next(self.songs)
+            except StopIteration:
+                if self.fetch_funcs:
+                    self.fetch_func = self.fetch_funcs.pop(0)
+                self.songs = self.fetch_songs()
+        return None
 
     def has_previous(self) -> bool:
         return bool(self.played)
