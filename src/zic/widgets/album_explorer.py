@@ -908,6 +908,8 @@ class AlbumExplorer(QWidget):
             except RuntimeError:
                 pass
         widget = self.get_item_from_album(album)
+        if widget is None:
+            return
         widget.set_playing_display()
         self.current_playing_album = widget
 
