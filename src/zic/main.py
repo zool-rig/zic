@@ -23,7 +23,7 @@ def launch_ui() -> None:
 
     qapp = QApplication(sys.argv)
     qapp.setWindowIcon(QIcon(get_resource("icons/zic.ico")))
-    
+
     if not app_config_exists():
         first_launch()
     app = ZicUI()
@@ -33,10 +33,7 @@ def launch_ui() -> None:
     sys.exit(qapp.exec())
 
 
-@click.group(
-    invoke_without_command=True,
-    epilog="Run the GUI : zic"
-)
+@click.group(invoke_without_command=True, epilog="Run the GUI : zic")
 @click.pass_context
 @click.option("-V", "version", is_flag=True, help="Show the current version of ZIC")
 def cli(ctx: click.Context, version: bool) -> None:
@@ -53,7 +50,7 @@ def cli(ctx: click.Context, version: bool) -> None:
 
 @cli.command(
     help="Ingests an audio library (mp3/m4a) into a SQLite database.",
-    epilog="Exemple:\n\n  zic ingest ~/Music"
+    epilog="Exemple:\n\n  zic ingest ~/Music",
 )
 @click.argument(
     "folder",
@@ -100,7 +97,7 @@ def ingest(
 @cli.group(
     "genres",
     invoke_without_command=False,
-    help="Manage genre proximity positions used to build genre-aware playlists."
+    help="Manage genre proximity positions used to build genre-aware playlists.",
 )
 def genres() -> None:
     pass

@@ -425,10 +425,12 @@ class ZicUI(QDialog):
         )
 
     def on_compute_genres_finished(
-        self, exit_code: int, exit_status: QProcess.ExitStatus   
+        self, exit_code: int, exit_status: QProcess.ExitStatus
     ) -> None:
         if exit_code == 0 and exit_status == QProcess.ExitStatus.NormalExit:
-            QMessageBox.information(self, "Database", "Genre positions computation finished")
+            QMessageBox.information(
+                self, "Database", "Genre positions computation finished"
+            )
             self.reload()
 
     def on_compute_genres_failed(self, error: QProcess.ProcessError) -> None:
@@ -459,11 +461,16 @@ class GlobalKeyFilter(QObject):
         self.app_instance: ZicUI = app_instance
 
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.KeyPress and event.key() in {
-            Qt.Key_Space,
-            Qt.Key_Left,
-            Qt.Key_Right,
-        } and not any(widget.hasFocus() for widget in self.app_instance.text_edits):
+        if (
+            event.type() == QEvent.KeyPress
+            and event.key()
+            in {
+                Qt.Key_Space,
+                Qt.Key_Left,
+                Qt.Key_Right,
+            }
+            and not any(widget.hasFocus() for widget in self.app_instance.text_edits)
+        ):
             self.app_instance.keyPressEvent(event)
             return True
         return super().eventFilter(obj, event)

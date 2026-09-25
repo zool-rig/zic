@@ -27,7 +27,9 @@ def build_similarity_matrix(
     index_by_id = {genre_id: i for i, (genre_id, _) in enumerate(genres)}
 
     albums_genres: dict[int, set[int]] = defaultdict(set)
-    for album_id, genre_id in conn.execute("SELECT album_id, genre_id FROM album_genres"):
+    for album_id, genre_id in conn.execute(
+        "SELECT album_id, genre_id FROM album_genres"
+    ):
         if genre_id in index_by_id:
             albums_genres[album_id].add(genre_id)
 
@@ -60,7 +62,9 @@ def build_similarity_matrix(
     # Discounting: mitigates rare pairs to avoid soaring PMIs
     # on a simple chance of single co-occurrence (Pantel & Lin, 2002)
     min_marginal = np.minimum.outer(marginal, marginal)
-    discount = (co_occurrence / (co_occurrence + 1)) * (min_marginal / (min_marginal + 1))
+    discount = (co_occurrence / (co_occurrence + 1)) * (
+        min_marginal / (min_marginal + 1)
+    )
     pmi *= discount
 
     # Positive PMI: we ignore the associations "less frequent than chance"
@@ -73,7 +77,9 @@ def build_similarity_matrix(
 
     for i, (_, name) in enumerate(genres):
         linked = int(np.count_nonzero(co_occurrence[i]))
-        LOGGER.info(f"{name}: co-occurs with {linked} other genre(s) across the library")
+        LOGGER.info(
+            f"{name}: co-occurs with {linked} other genre(s) across the library"
+        )
 
     return similarity
 

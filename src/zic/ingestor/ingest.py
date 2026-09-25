@@ -557,7 +557,9 @@ def get_picture_url_content(url: str, key: StringLike, token: StringLike) -> byt
     return response.content
 
 
-def extract_cover_thumbnail(path: Path | str, key: StringLike, token: StringLike) -> tuple[bytes, str, int, int, str] | None:
+def extract_cover_thumbnail(
+    path: Path | str, key: StringLike, token: StringLike
+) -> tuple[bytes, str, int, int, str] | None:
     """Extracts, downsizes and compresses the embedded artwork so it fits
     the DB's 100KB CHECK constraint. Returns
     (jpeg_bytes, mime_type, width, height, dominant_color_hex) or None if

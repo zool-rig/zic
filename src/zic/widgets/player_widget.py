@@ -613,7 +613,7 @@ class PlayerWidget(QWidget):
     def toggle_play_pause(self) -> None:
         if self.current_song is None:
             return
-        
+
         if self.playback_widget.playing:
             self.playback_widget.pause()
         else:
