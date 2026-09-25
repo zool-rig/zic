@@ -1,8 +1,15 @@
 from pathlib import Path
 
-from PySide6.QtCore import *
-from PySide6.QtGui import *
-from PySide6.QtWidgets import *
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (
+    QVBoxLayout,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QFileDialog,
+    QPushButton,
+    QDialog,
+)
 
 from zic.config import AppConfig
 from zic.utils.db_utils import is_valid_sqlite_file
