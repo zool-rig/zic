@@ -63,7 +63,7 @@ YEAR_RE = re.compile(r"(\d{4})")
 # genre field from scrobble-based taggers -- not actual musical genres.
 YEAR_OR_DECADE_RE = re.compile(r"^(?:\d{4}|\d{2}s|\d{4}s)$")
 
-GENRE_SPLIT_RE = re.compile(r"\s*;|,\s*")
+GENRE_SPLIT_RE = re.compile(r"\s*[;/]|,\s*")
 # Personal/list-style tags that occasionally end up in the genre field
 # (e.g. via tools that copy a user's Last.fm tag cloud into ID3/MP4 tags),
 # not actual musical genres. Necessarily incomplete: catches known recurring
@@ -250,7 +250,7 @@ def genre_match_key(name: str) -> str:
     AND separators (-, _, /) to spaces, so "trip-hop", "trip hop" and
     "Trip_Hop" are all recognized as the same genre."""
     key = fold_diacritics(name).lower()
-    key = re.sub(r"[-_/]+", " ", key)
+    key = re.sub(r"[-_]+", " ", key)
     return " ".join(key.split())
 
 
