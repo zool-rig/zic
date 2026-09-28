@@ -1,4 +1,5 @@
 import importlib.metadata
+from typing import Callable
 
 from PySide6.QtCore import QEvent, QObject, QProcess, QSize, Qt, QTimer
 from PySide6.QtGui import QIcon, QKeyEvent
@@ -37,6 +38,18 @@ class ZicUI(QDialog):
     def __init__(self) -> None:
         super().__init__()
         self.api: ZicApi = ZicApi()
+        self.HOTKEYS_ACTIONS: dict[str, Callable[[], None]] = {
+            "play/pause": self.toggle_play_pause,
+            "mute": self.mute_sound,
+            "next-song": self.play_next_song,
+            "previous-song": self.play_previous_song,
+            "reload": self.reload,
+            "shuffle": self.on_play_random_btn_clicked,
+            "advance": self.advance,
+            "rewind": self.rewind,
+            "volume_up": self.volume_up,
+            "volume_down": self.volume_down,
+        }
 
         # Layouts
         self.main_v_layout = None
@@ -311,18 +324,7 @@ class ZicUI(QDialog):
         if action_name is None:
             return
 
-        action = {
-            "play/pause": self.toggle_play_pause,
-            "mute": self.mute_sound,
-            "next-song": self.play_next_song,
-            "previous-song": self.play_previous_song,
-            "reload": self.reload,
-            "shuffle": self.on_play_random_btn_clicked,
-            "advance": self.advance,
-            "rewind": self.rewind,
-            "volume_up": self.volume_up,
-            "volume_down": self.volume_donw,
-        }[action_name]
+        action = self.HOTKEYS_ACTIONS[action_name]
 
         action()
 
@@ -351,7 +353,7 @@ class ZicUI(QDialog):
     def volume_up(self) -> None:
         self.player_widget.volume_slider.volume_up(5)
 
-    def volume_donw(self) -> None:
+    def volume_down(self) -> None:
         self.player_widget.volume_slider.volume_down(5)
 
     def jump_to_song(self, song: Song) -> None:
