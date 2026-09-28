@@ -14,8 +14,8 @@ class AlbumCover(NamedTuple):
 class Album:
     id: int
     name: str
-    year: int
-    raw_date: str
+    year: int | None
+    raw_date: str | None
     _artist_id: int = field(repr=False, compare=False)
     _artist_name: str = field(repr=False, compare=False)
     _artist_normalized_name: str = field(repr=False, compare=False)
