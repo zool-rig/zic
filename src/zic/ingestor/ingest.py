@@ -484,16 +484,19 @@ def get_or_create_album(
     return cur.lastrowid
 
 
-def get_or_create_genre(conn: sqlite3.Connection, name: str) -> int:
+def get_or_create_genre(conn: sqlite3.Connection, name: str, genres_name_id_map: dict[str, int]) -> int:
     # Case-, accent-, AND separator-insensitive lookup: "Rock"/"rock" and
     # "trip-hop"/"trip hop" all resolve to the same row instead of creating
     # near-duplicates. Genre counts are small (a few hundred at most) so an
     # in-Python scan is cheap and simpler than a SQL collation.
     key = genre_match_key(name)
-    for gid, gname in conn.execute("SELECT id, name FROM genres"):
-        if genre_match_key(gname) == key:
-            return gid
+    
+    if key in genres_name_id_map:
+        return genres_name_id_map[key]
+    
     cur = conn.execute("INSERT INTO genres (name) VALUES (?)", (name.strip(),))
+    new_id = cur.lastrowid
+    genres_name_id_map[key] = new_id
     LOGGER.info(f"Genre created : {name}")
     return cur.lastrowid
 
@@ -640,6 +643,7 @@ def ingest_file(
     discogs_secret: DiscogsSecret,
     cover_attempted: set[int],
     discogs_albums_data: dict[int, dict[str, Any]],
+    genres_name_id_map: dict[str, int],
 ) -> str:
     rel_path = str(path.relative_to(root))
     file_mtime = path.stat().st_mtime
@@ -703,7 +707,7 @@ def ingest_file(
         ):
             rejected_genre_tags.append(genre_name)
             continue
-        gid = get_or_create_genre(conn, genre_name)
+        gid = get_or_create_genre(conn, genre_name, genres_name_id_map)
         if genre_tag_id is None:
             genre_tag_id = gid
         link_album_genre(conn, album_id, gid)
@@ -846,6 +850,11 @@ def ingest(
         file_count = 0
         files_to_commit = 0
 
+        genres_name_id_map = {
+            genre_match_key(gname): id_ for id_, gname in
+            conn.execute("SELECT id, name FROM genres")
+        }
+
         for path in find_audio_files(root):
             file_count += 1
             files_to_commit += 1
@@ -858,6 +867,7 @@ def ingest(
                     discogs_secret,
                     cover_attempted,
                     discogs_albums_data,
+                    genres_name_id_map,
                 )
                 counts[status] += 1
                 LOGGER.info(f"Song {status} : '{path.relative_to(root)}'")
