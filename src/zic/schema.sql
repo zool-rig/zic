@@ -41,7 +41,7 @@ CREATE TABLE covers_thumbnails (
 CREATE TABLE genres (
     id         INTEGER PRIMARY KEY,
     name       TEXT NOT NULL UNIQUE,
-    position   TEXT NOt NULL DEFAULT "[]"  -- proximity vector, JSON: "[0.12, -0.4, ...]" (computed offline via Last.fm)
+    position   TEXT NOT NULL DEFAULT "[]"  -- proximity vector, JSON: "[0.12, -0.4, ...]" (computed offline via Last.fm)
 );
 
 CREATE TABLE album_genres (
