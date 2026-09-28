@@ -5,7 +5,7 @@ from zic.models.song import Song
 
 class Playlist:
     def __init__(self, *fetch_funcs: Callable) -> None:
-        self.fetch_funcs: list[Callable[[], list[Song]]] = list(fetch_funcs)
+        self.fetch_funcs: list[Callable[[set[int]], list[Song]]] = list(fetch_funcs)
         if not self.fetch_funcs:
             raise ValueError(
                 "You need to provide at least one function that fetches songs"
