@@ -116,7 +116,7 @@ LOGGER = get_logger("Ingest")
 # ---------------------------------------------------------------------------
 
 
-def init_db(conn: sqlite3.Connection):
+def init_db(conn: sqlite3.Connection) -> None:
     existing = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='songs'"
     ).fetchone()
@@ -433,7 +433,7 @@ def compute_hash(path: Path) -> str:
     return h.hexdigest()
 
 
-def set_metadata(conn, key: str, value: str):
+def set_metadata(conn, key: str, value: str) -> None:
     conn.execute(
         """
         INSERT INTO metadata (key, value) VALUES (?, ?)
@@ -498,14 +498,14 @@ def get_or_create_genre(conn: sqlite3.Connection, name: str) -> int:
     return cur.lastrowid
 
 
-def link_album_genre(conn: sqlite3.Connection, album_id: int, genre_id: int):
+def link_album_genre(conn: sqlite3.Connection, album_id: int, genre_id: int) -> None:
     conn.execute(
         "INSERT OR IGNORE INTO album_genres (album_id, genre_id) VALUES (?, ?)",
         (album_id, genre_id),
     )
 
 
-def set_song_artists(conn: sqlite3.Connection, song_id: int, artist_credit: str):
+def set_song_artists(conn: sqlite3.Connection, song_id: int, artist_credit: str) -> None:
     conn.execute("DELETE FROM song_artists WHERE song_id = ?", (song_id,))
     names = split_artists(artist_credit) if artist_credit else [UNKNOWN_ARTIST]
     for position, name in enumerate(names):
