@@ -2,6 +2,7 @@ import json
 import sqlite3
 import tempfile
 import webbrowser
+import os
 from collections import defaultdict
 from itertools import combinations
 from pathlib import Path
@@ -162,8 +163,9 @@ def visualize_genres(db_path: Path) -> None:
     )
     fig.update_traces(textposition="top center", marker={"size": 8})
 
-    tmp_path = Path(tempfile.gettempdir()) / next(tempfile._get_candidate_names())
-    tmp_path = tmp_path.with_suffix(".html")
+    fd, tmp_path_str = tempfile.mkstemp(suffix=".html")
+    os.close(fd)
+    tmp_path = Path(tmp_path_str)
 
     fig.write_html(str(tmp_path))
     webbrowser.open(f"file://{tmp_path}")
