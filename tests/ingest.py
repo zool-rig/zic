@@ -152,12 +152,14 @@ def test_get_or_create_album_dedupes_by_normalized_name(db):
 
 
 def test_get_or_create_genre_dedupes_across_separators(db):
-    first_id = get_or_create_genre(db, "trip-hop")
-    second_id = get_or_create_genre(db, "Trip Hop")
+    genre_id_map = {}
+    first_id = get_or_create_genre(db, "trip-hop", genre_id_map)
+    second_id = get_or_create_genre(db, "Trip Hop", genre_id_map)
     assert first_id == second_id
 
 
 def test_get_or_create_genre_creates_distinct_rows_for_distinct_genres(db):
-    rock_id = get_or_create_genre(db, "rock")
-    jazz_id = get_or_create_genre(db, "jazz")
+    genre_id_map = {}
+    rock_id = get_or_create_genre(db, "rock", genre_id_map)
+    jazz_id = get_or_create_genre(db, "jazz", genre_id_map)
     assert rock_id != jazz_id
