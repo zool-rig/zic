@@ -19,7 +19,6 @@ from zic.ingestor.ingest import (
     split_genres,
 )
 
-
 # --- clean_name -----------------------------------------------------------
 
 @pytest.mark.parametrize(

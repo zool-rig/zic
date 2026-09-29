@@ -1,8 +1,8 @@
 import json
+import os
 import sqlite3
 import tempfile
 import webbrowser
-import os
 from collections import defaultdict
 from itertools import combinations
 from pathlib import Path

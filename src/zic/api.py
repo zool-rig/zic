@@ -1,7 +1,7 @@
 import math
+import random
 import sqlite3
 import time
-import random
 from collections import defaultdict
 from datetime import datetime
 from enum import Enum
@@ -14,7 +14,7 @@ from zic.models.artist import Artist
 from zic.models.genre import Genre
 from zic.models.playlist import Playlist
 from zic.models.song import Song
-from zic.utils.db_utils import RowFactory, check_database, InvalidDatabaseError
+from zic.utils.db_utils import InvalidDatabaseError, RowFactory, check_database
 from zic.utils.query_builder import QueryBuilder
 
 SONG_CHUNK_LIMIT = 50
