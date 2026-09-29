@@ -265,8 +265,7 @@ class ZicApi:
             sample_size = min(needed * 3, max_id - min_id + 1)
             candidate_ids = random.sample(range(min_id, max_id + 1), sample_size)
             candidate_ids = [
-                i for i in candidate_ids
-                if i not in exclude_ids and i not in collected
+                i for i in candidate_ids if i not in exclude_ids and i not in collected
             ]
             if not candidate_ids:
                 continue

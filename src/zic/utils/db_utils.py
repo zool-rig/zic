@@ -48,9 +48,7 @@ def check_database(conn: sqlite3.Connection) -> bool:
         if result is None or result[0] != "ok":
             return False
 
-        cur = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table'"
-        )
+        cur = conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
         existing_tables = {row[0] for row in cur.fetchall()}
 
         # Either a fresh/empty file (will be initialized on first ingest)

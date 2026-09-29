@@ -484,16 +484,18 @@ def get_or_create_album(
     return cur.lastrowid
 
 
-def get_or_create_genre(conn: sqlite3.Connection, name: str, genres_name_id_map: dict[str, int]) -> int:
+def get_or_create_genre(
+    conn: sqlite3.Connection, name: str, genres_name_id_map: dict[str, int]
+) -> int:
     # Case-, accent-, AND separator-insensitive lookup: "Rock"/"rock" and
     # "trip-hop"/"trip hop" all resolve to the same row instead of creating
     # near-duplicates. Genre counts are small (a few hundred at most) so an
     # in-Python scan is cheap and simpler than a SQL collation.
     key = genre_match_key(name)
-    
+
     if key in genres_name_id_map:
         return genres_name_id_map[key]
-    
+
     cur = conn.execute("INSERT INTO genres (name) VALUES (?)", (name.strip(),))
     new_id = cur.lastrowid
     genres_name_id_map[key] = new_id
@@ -508,7 +510,9 @@ def link_album_genre(conn: sqlite3.Connection, album_id: int, genre_id: int) -> 
     )
 
 
-def set_song_artists(conn: sqlite3.Connection, song_id: int, artist_credit: str) -> None:
+def set_song_artists(
+    conn: sqlite3.Connection, song_id: int, artist_credit: str
+) -> None:
     conn.execute("DELETE FROM song_artists WHERE song_id = ?", (song_id,))
     names = split_artists(artist_credit) if artist_credit else [UNKNOWN_ARTIST]
     for position, name in enumerate(names):
@@ -851,8 +855,8 @@ def ingest(
         files_to_commit = 0
 
         genres_name_id_map = {
-            genre_match_key(gname): id_ for id_, gname in
-            conn.execute("SELECT id, name FROM genres")
+            genre_match_key(gname): id_
+            for id_, gname in conn.execute("SELECT id, name FROM genres")
         }
 
         for path in find_audio_files(root):

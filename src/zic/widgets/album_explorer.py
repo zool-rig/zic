@@ -522,9 +522,7 @@ class AlbumExplorerView(QListView):
             album = index.data(Qt.UserRole)
             if album is not None:
                 album_widget = AlbumItemWidget(album, index.data(COVER_ROLE))
-                self.setIndexWidget(
-                    index, album_widget
-                )
+                self.setIndexWidget(index, album_widget)
                 self._item_widgets[album.id] = album_widget
 
     def on_model_data_changed(

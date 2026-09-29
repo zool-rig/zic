@@ -119,7 +119,9 @@ class FirstLaunchDialog(QDialog):
             self.ok_btn.setEnabled(False)
             return False
         if not is_valid_sqlite_file(self.db_path_selector):
-            self.error_message_lbl.setText("Database may be corrupted or not a valid ZIC's database")
+            self.error_message_lbl.setText(
+                "Database may be corrupted or not a valid ZIC's database"
+            )
             self.error_message_lbl.show()
             self.ok_btn.setEnabled(False)
             return False
