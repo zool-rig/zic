@@ -190,7 +190,7 @@ class LikesWidget(QWidget):
 
 
 class PlaybackWidget(QWidget):
-    song_resumed = Signal()
+    song_started = Signal()
     song_paused = Signal()
     song_finished = Signal()
     previous_requested = Signal()
@@ -297,7 +297,7 @@ class PlaybackWidget(QWidget):
         self.media_player.play()
         self.progress_timer.start()
         self.playing = True
-        self.song_resumed.emit()
+        self.song_started.emit()
 
     def pause(self) -> None:
         self.play_btn.setChecked(False)
@@ -530,7 +530,7 @@ class PlayerWidget(QWidget):
         self.playback_widget.song_paused.connect(
             lambda: self.song_paused.emit(self.current_song)
         )
-        self.playback_widget.song_resumed.connect(
+        self.playback_widget.song_started.connect(
             lambda: self.song_started.emit(self.current_song)
         )
         self.song_info_widget.song_url_clicked.connect(self.song_url_clicked)

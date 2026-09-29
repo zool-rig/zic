@@ -4,7 +4,6 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QColor, QIcon
 from PySide6.QtWidgets import (
     QApplication,
-    QHBoxLayout,
     QLabel,
     QToolButton,
     QWidget,
@@ -113,20 +112,4 @@ def named_widget(
 ) -> QWidget:
     widget = widget_type(*args, **kwargs)
     widget.setObjectName(name)
-    return widget
-
-
-def labeled(
-    widget_type: type[QWidget], label: str, *args: Any, **kwargs: Any
-) -> QWidget:
-    widget = QWidget()
-    layout = QHBoxLayout(widget)
-    label_ = QLabel(label)
-    content = widget_type(*args, **kwargs)
-    layout.addWidget(label_)
-    layout.addWidget(content)
-    widget.layout = layout
-    widget.label = label_
-    widget.content = content
-    layout.setContentsMargins(0, 0, 0, 0)
     return widget

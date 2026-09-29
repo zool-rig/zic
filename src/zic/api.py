@@ -1,6 +1,7 @@
 import math
 import sqlite3
 import time
+import random
 from collections import defaultdict
 from datetime import datetime
 from enum import Enum
@@ -243,19 +244,45 @@ class ZicApi:
 
     def fetch_random_songs(self, exclude_ids: set[int] | None = None) -> list[Song]:
         start_time = time.perf_counter()
-        query = self.get_song_query()
 
-        if exclude_ids:
-            query.push("AND songs.id NOT IN")
-            query.push_binds(exclude_ids)
+        row = self.connection.execute(
+            "SELECT MIN(id), MAX(id) FROM songs WHERE hidden = FALSE"
+        ).fetchone()
+        min_id, max_id = row
+        if min_id is None:  # no songs at all
+            return []
 
-        query.push(f"ORDER BY RANDOM() LIMIT {SONG_CHUNK_LIMIT}")
+        exclude_ids = exclude_ids or set()
+        collected: dict[int, Song] = {}
+        attempts = 0
+        max_attempts = 5  # safety net against pathological gaps/exclusions
 
-        with RowFactory(self.connection, sqlite3.Row):
-            cur = self.connection.execute(*query.build())
-            rows = cur.fetchall()
+        while len(collected) < SONG_CHUNK_LIMIT and attempts < max_attempts:
+            attempts += 1
+            needed = SONG_CHUNK_LIMIT - len(collected)
+            # Oversample a bit: some picks will miss (gaps, hidden, excluded,
+            # already collected), so ask for more ids than we still need.
+            sample_size = min(needed * 3, max_id - min_id + 1)
+            candidate_ids = random.sample(range(min_id, max_id + 1), sample_size)
+            candidate_ids = [
+                i for i in candidate_ids
+                if i not in exclude_ids and i not in collected
+            ]
+            if not candidate_ids:
+                continue
 
-        songs = self.get_songs_from_rows(rows)
+            query = self.get_song_query()
+            query.push("AND songs.id IN")
+            query.push_binds(candidate_ids)
+
+            with RowFactory(self.connection, sqlite3.Row):
+                cur = self.connection.execute(*query.build())
+                rows = cur.fetchall()
+
+            for song in self.get_songs_from_rows(rows):
+                collected[song.id] = song
+
+        songs = list(collected.values())[:SONG_CHUNK_LIMIT]
 
         LOGGER.debug(
             f"{len(songs)} random songs fetched in {time.perf_counter() - start_time:.3f}s"

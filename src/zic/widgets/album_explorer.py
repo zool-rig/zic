@@ -51,7 +51,6 @@ from zic.widgets.toggle_switch import ToggleSwitch
 
 ALBUM_THUMBNAIL_SIZE = 140
 ALBUM_ITEM_SIZE = QSize(160, 220)
-ALBUM_CHUNK_SIZE = 60
 COVER_ROLE = Qt.UserRole + 1
 TEXT_ROLE = Qt.UserRole + 2
 PREFETCH_MARGIN_ROWS = 30
@@ -522,9 +521,11 @@ class AlbumExplorerView(QListView):
                 continue
             album = index.data(Qt.UserRole)
             if album is not None:
+                album_widget = AlbumItemWidget(album, index.data(COVER_ROLE))
                 self.setIndexWidget(
-                    index, AlbumItemWidget(album, index.data(COVER_ROLE))
+                    index, album_widget
                 )
+                self._item_widgets[album.id] = album_widget
 
     def on_model_data_changed(
         self, top_left: QModelIndex, bottom_right: QModelIndex, roles: list[int]
@@ -740,6 +741,8 @@ class AlbumExplorer(QWidget):
         self.search_edt.setCompleter(completer)
 
     def fill(self) -> None:
+        if self.view is not None:
+            self.view._item_widgets.clear()
         albums = self.api.albums()
         self.model.set_albums(albums)
         self.title_lbl.setText(f"{len(albums)} - Albums")
@@ -858,29 +861,10 @@ class AlbumExplorer(QWidget):
         self.proxy.sort(0, order)
 
     def get_item_from_album(self, album: Album) -> AlbumItemWidget | None:
-        if self.view is None or self.proxy is None:
-            return None
+        if self.view is None:
+            return
 
-        for row in range(self.proxy.rowCount()):
-            index = self.proxy.index(row, 0)
-            item_album = index.data(Qt.UserRole)
-            if item_album is not None and item_album.id == album.id:
-                widget = self.view.indexWidget(index)
-                if isinstance(widget, AlbumItemWidget):
-                    return widget
-
-        if self.model is not None:
-            for row in range(self.model.rowCount()):
-                index = self.model.index(row, 0)
-                item_album = index.data(Qt.UserRole)
-                if item_album is not None and item_album.id == album.id:
-                    proxy_index = self.proxy.mapFromSource(index)
-                    if proxy_index.isValid():
-                        widget = self.view.indexWidget(proxy_index)
-                        if isinstance(widget, AlbumItemWidget):
-                            return widget
-
-        return None
+        return self.view._item_widgets.get(album.id)
 
     def set_sorting_mode(self, mode: SortingMode, state: bool) -> None:
         self.sorting_mode = mode if state else SortingMode.NONE
