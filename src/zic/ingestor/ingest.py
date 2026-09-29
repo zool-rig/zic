@@ -648,6 +648,7 @@ def ingest_file(
     cover_attempted: set[int],
     discogs_albums_data: dict[int, dict[str, Any]],
     genres_name_id_map: dict[str, int],
+    genres_reset: set[int],
 ) -> str:
     rel_path = str(path.relative_to(root))
     file_mtime = path.stat().st_mtime
@@ -698,6 +699,14 @@ def ingest_file(
     album_id = get_or_create_album(
         conn, album_name, album_artist_id, year, is_compilation
     )
+
+    if rescan and album_id not in genres_reset:
+        # Drop stale genre links from a previous scan so re-tagging (or
+        # a change in the ingestor's parsing rules) doesn't leave orphaned
+        # associations behind. Safe: every song of this album still to be
+        # processed in this run will re-add its own genres below.
+        conn.execute("DELETE FROM album_genres WHERE album_id = ?", (album_id,))
+        genres_reset.add(album_id)
 
     genres = album_discogs_data["genres"]
     genres.update(split_genres(meta["genre"]))
@@ -850,6 +859,7 @@ def ingest(
 
         counts = {"created": 0, "updated": 0, "unchanged": 0, "error": 0, "skipped": 0}
         cover_attempted: set[int] = set()
+        genres_reset: set[int] = set()
         discogs_albums_data: dict[int, dict[str, Any]] = {}
         file_count = 0
         files_to_commit = 0
@@ -872,6 +882,7 @@ def ingest(
                     cover_attempted,
                     discogs_albums_data,
                     genres_name_id_map,
+                    genres_reset,
                 )
                 counts[status] += 1
                 LOGGER.info(f"Song {status} : '{path.relative_to(root)}'")
