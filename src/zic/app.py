@@ -1,5 +1,5 @@
 import importlib.metadata
-from typing import Callable
+from collections.abc import Callable
 
 from PySide6.QtCore import QEvent, QObject, QProcess, QSize, Qt, QTimer
 from PySide6.QtGui import QIcon, QKeyEvent
