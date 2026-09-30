@@ -18,14 +18,17 @@ def launch_ui() -> None:
     from PySide6.QtWidgets import QApplication
 
     from zic.app import GlobalKeyFilter, ZicUI
-    from zic.config import app_config_exists
+    from zic.config import app_config_exists, get_app_config
     from zic.resources import get_resource
+    from zic.utils.instance_lock import acquire_instance_lock
 
     qapp = QApplication(sys.argv)
     qapp.setWindowIcon(QIcon(get_resource("icons/zic.ico")))
 
     if not app_config_exists():
         first_launch()
+    # Kept in a local so the lock is held until the app exits.
+    instance_lock = acquire_instance_lock(get_app_config().db_path)  # noqa: F841
     app = ZicUI()
     key_filter = GlobalKeyFilter(app)
     qapp.installEventFilter(key_filter)
