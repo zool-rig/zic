@@ -37,8 +37,11 @@ def is_valid_sqlite_file(db_path: os.PathLike) -> bool:
     if not os.path.exists(db_path):
         return False
 
-    with sqlite3.connect(db_path) as conn:
+    conn = sqlite3.connect(db_path)
+    try:
         return check_database(conn)
+    finally:
+        conn.close()
 
 
 def check_database(conn: sqlite3.Connection) -> bool:

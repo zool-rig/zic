@@ -34,6 +34,7 @@ class ZicApi:
         conn = sqlite3.connect(db_path)
         conn.execute("PRAGMA foreign_keys = ON")
         if not check_database(conn):
+            conn.close()
             raise InvalidDatabaseError(db_path)
         LOGGER.debug(f"Connected to database {db_path}")
         return conn
