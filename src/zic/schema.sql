@@ -66,8 +66,6 @@ CREATE TABLE songs (
     disc_number     INTEGER,
     disc_total      INTEGER,
 
-    genre_tag_id    INTEGER,                -- genre taken directly from the file's tag, nullable
-
     duration        REAL NOT NULL,
 
     -- technical
@@ -91,8 +89,7 @@ CREATE TABLE songs (
     file_modified_at      TEXT,             -- file mtime at last scan (detects on-disk changes)
     imported_at            TEXT NOT NULL DEFAULT (datetime('now')), -- last technical (re)scan
 
-    FOREIGN KEY (album_id) REFERENCES albums(id),
-    FOREIGN KEY (genre_tag_id) REFERENCES genres(id)
+    FOREIGN KEY (album_id) REFERENCES albums(id)
 );
 
 -- Listening history, one row per play (used as a base for recommendation algorithms)

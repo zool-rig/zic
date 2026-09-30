@@ -69,22 +69,22 @@ def _seed_library(conn: sqlite3.Connection) -> None:
     # Talkie Walkie (album 3) intentionally has no genre.
 
     songs = [
-        # id, path,                          title,                artist_credit, album_id, track, genre
-        (1, "air/moon_safari/01.mp3",        "La Femme d'Argent",  "Air",       1, 1, 1),
-        (2, "air/moon_safari/02.mp3",        "Sexy Boy",           "Air",       1, 2, 1),
-        (5, "air/moon_safari/03.mp3",        "Talisman",           "Air",       1, 3, 1),
-        (3, "daft_punk/discovery/01.mp3",    "One More Time",      "Daft Punk", 2, 1, 2),
-        (4, "daft_punk/discovery/02.mp3",    "Aerodynamic",        "Daft Punk", 2, 2, 2),
-        (6, "air/talkie_walkie/01.mp3",      "Cherry Blossom Girl","Air",       3, 1, None),
+        # id, path,                          title,                artist_credit, album_id, track
+        (1, "air/moon_safari/01.mp3",        "La Femme d'Argent",  "Air",       1, 1),
+        (2, "air/moon_safari/02.mp3",        "Sexy Boy",           "Air",       1, 2),
+        (5, "air/moon_safari/03.mp3",        "Talisman",           "Air",       1, 3),
+        (3, "daft_punk/discovery/01.mp3",    "One More Time",      "Daft Punk", 2, 1),
+        (4, "daft_punk/discovery/02.mp3",    "Aerodynamic",        "Daft Punk", 2, 2),
+        (6, "air/talkie_walkie/01.mp3",      "Cherry Blossom Girl","Air",       3, 1),
     ]
     artist_by_album = {1: 1, 2: 2, 3: 1}
-    for song_id, path, title, artist_credit, album_id, track_number, genre_id in songs:
+    for song_id, path, title, artist_credit, album_id, track_number in songs:
         conn.execute(
             "INSERT INTO songs "
-            "(id, path, title, artist_credit, album_id, track_number, genre_tag_id, "
+            "(id, path, title, artist_credit, album_id, track_number, "
             "duration, format, file_size) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, 180.0, 'mp3', 1000)",
-            (song_id, path, title, artist_credit, album_id, track_number, genre_id),
+            "VALUES (?, ?, ?, ?, ?, ?, 180.0, 'mp3', 1000)",
+            (song_id, path, title, artist_credit, album_id, track_number),
         )
         conn.execute(
             "INSERT INTO song_artists (song_id, artist_id, role, position) VALUES (?, ?, 'main', 0)",

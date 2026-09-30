@@ -34,6 +34,12 @@ def test_talkie_walkie_has_no_genres(api):
     assert album.genres == []
 
 
+def test_songs_album_exposes_all_album_genres(api):
+    album = _album(api, "Moon Safari")
+    for song in api.get_album_songs(album):
+        assert {g.name for g in song.album.genres} == {"electronic", "french touch"}
+
+
 # --- get_album_songs ordering -------------------------------------------
 
 def test_get_album_songs_track_num_order(api):
@@ -81,6 +87,13 @@ def test_get_near_genres_orders_by_distance(api):
 
 def test_get_near_songs_from_album_empty_when_no_genres(api):
     assert api.get_near_songs_from_album(_album(api, "Talkie Walkie")) == []
+
+
+def test_get_near_songs_from_album_matches_on_album_genres(api):
+    # Discovery is only "french touch": Moon Safari shares that genre at the
+    # album level, so its songs must be found too.
+    songs = api.get_near_songs_from_album(_album(api, "Discovery"))
+    assert {s.album.name for s in songs} == {"Moon Safari", "Discovery"}
 
 
 def test_get_near_songs_from_album_respects_exclude_ids(api):

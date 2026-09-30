@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from zic.models.album import Album
-from zic.models.genre import Genre
 
 
 @dataclass(slots=True)
@@ -30,7 +29,6 @@ class Song:
     added_to_library_at: datetime
     file_modified_at: datetime | None
     imported_at: datetime
-    genre: Genre | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.path, str):

@@ -85,6 +85,37 @@ class ZicApi:
             self._cache_genres()
         return self._genres_cache
 
+    def _fetch_genres_by_album(
+        self, album_ids: set[int] | None = None
+    ) -> dict[int, list[Genre]]:
+        """Genres of each album, from album_genres. Fetches every album when
+        album_ids is None."""
+        query = QueryBuilder(
+            "SELECT DISTINCT "
+            "album_genres.album_id AS album_id, "
+            "genres.id AS genre_id, "
+            "genres.name AS genre_name, "
+            "genres.position AS genre_position "
+            "FROM album_genres "
+            "JOIN genres ON genres.id = album_genres.genre_id"
+        )
+        if album_ids is not None:
+            if not album_ids:
+                return {}
+            query.push("WHERE album_genres.album_id IN")
+            query.push_binds(album_ids)
+
+        with RowFactory(self.connection, sqlite3.Row):
+            cur = self.connection.execute(*query.build())
+            rows = cur.fetchall()
+
+        genres_by_album: dict[int, list[Genre]] = defaultdict(list)
+        for row in rows:
+            genres_by_album[row["album_id"]].append(
+                Genre(row["genre_id"], row["genre_name"], row["genre_position"])
+            )
+        return dict(genres_by_album)
+
     def _cache_albums(self) -> None:
         start_time = time.perf_counter()
         with RowFactory(self.connection, sqlite3.Row):
@@ -105,22 +136,7 @@ class ZicApi:
             )
             album_rows = cur.fetchall()
 
-            cur.execute(
-                "SELECT DISTINCT "
-                "album_genres.album_id, "
-                "genres.id AS genre_id, "
-                "genres.name AS genre_name, "
-                "genres.position AS genre_position "
-                "FROM album_genres "
-                "JOIN genres ON genres.id = album_genres.genre_id;"
-            )
-            genre_rows = cur.fetchall()
-
-            genres_by_album: dict[int, list[Genre]] = defaultdict(list)
-            for row in genre_rows:
-                genres_by_album[row["album_id"]].append(
-                    Genre(row["genre_id"], row["genre_name"], row["genre_position"])
-                )
+            genres_by_album = self._fetch_genres_by_album()
 
             self._albums_cache = []
 
@@ -181,25 +197,19 @@ class ZicApi:
             "albums.is_compilation AS album_is_compilation, "
             "artists.id AS album_artist_id, "
             "artists.name AS album_artist_name, "
-            "artists.normalized_name AS album_artist_normalized_name, "
-            "genres.id AS genre_id, "
-            "genres.name AS genre_name, "
-            "genres.position AS genre_position "
+            "artists.normalized_name AS album_artist_normalized_name "
             "FROM songs "
             "LEFT JOIN albums ON albums.id = songs.album_id "
             "LEFT JOIN artists ON artists.id = albums.artist_id "
-            "LEFT JOIN genres ON genres.id = songs.genre_tag_id "
             "WHERE hidden = FALSE"
         )
 
     def get_songs_from_rows(self, rows: list[Any]) -> list[Song]:
+        genres_by_album = self._fetch_genres_by_album({row["album_id"] for row in rows})
+
         songs: list[Song] = []
 
         for row in rows:
-            genre = None
-            if row["genre_id"] is not None:
-                genre = Genre(row["genre_id"], row["genre_name"], row["genre_position"])
-
             album = Album(
                 id=row["album_id"],
                 name=row["album_name"],
@@ -209,7 +219,7 @@ class ZicApi:
                 _artist_name=row["album_artist_name"],
                 _artist_normalized_name=row["album_artist_normalized_name"],
                 is_compilation=bool(row["album_is_compilation"]),
-                genres=[genre] if genre is not None else [],
+                genres=genres_by_album.get(row["album_id"], []),
             )
 
             songs.append(
@@ -236,7 +246,6 @@ class ZicApi:
                     added_to_library_at=row["added_to_library_at"],
                     file_modified_at=row["file_modified_at"],
                     imported_at=row["imported_at"],
-                    genre=genre,
                 )
             )
 
@@ -428,8 +437,11 @@ class ZicApi:
         near_genres_ids = {g.id for g in near_genres}
 
         query = self.get_song_query()
-        query.push("AND genre_id IN")
+        query.push(
+            "AND songs.album_id IN (SELECT album_id FROM album_genres WHERE genre_id IN"
+        )
         query.push_binds(near_genres_ids)
+        query.push(")")
 
         if exclude_ids:
             query.push("AND songs.id NOT IN")

@@ -708,9 +708,11 @@ def ingest_file(
         conn.execute("DELETE FROM album_genres WHERE album_id = ?", (album_id,))
         genres_reset.add(album_id)
 
-    genres = album_discogs_data["genres"]
+    # album_genres is the single source of truth for genres: every genre
+    # found for this file (Discogs + tag) is linked to its album. Copy the
+    # Discogs set so the file's own tags don't leak into the shared cache.
+    genres = set(album_discogs_data["genres"])
     genres.update(split_genres(meta["genre"]))
-    genre_tag_id = None
     rejected_genre_tags = []
     for genre_name in genres:
         if (
@@ -721,8 +723,6 @@ def ingest_file(
             rejected_genre_tags.append(genre_name)
             continue
         gid = get_or_create_genre(conn, genre_name, genres_name_id_map)
-        if genre_tag_id is None:
-            genre_tag_id = gid
         link_album_genre(conn, album_id, gid)
 
     extra_tags_json = (
@@ -755,7 +755,7 @@ def ingest_file(
             UPDATE songs SET
                 title = ?, artist_credit = ?, album_id = ?,
                 track_number = ?, track_total = ?, disc_number = ?, disc_total = ?,
-                genre_tag_id = ?, duration = ?, format = ?, file_size = ?,
+                duration = ?, format = ?, file_size = ?,
                 bitrate = ?, sample_rate = ?, content_hash = ?,
                 sort_title = ?, extra_tags = ?, file_modified_at = ?,
                 imported_at = datetime('now')
@@ -769,7 +769,6 @@ def ingest_file(
                 meta["track_total"],
                 meta["disc_number"],
                 meta["disc_total"],
-                genre_tag_id,
                 meta["duration"],
                 meta["format"],
                 meta["file_size"],
@@ -798,10 +797,10 @@ def ingest_file(
             INSERT INTO songs (
                 path, title, artist_credit, album_id,
                 track_number, track_total, disc_number, disc_total,
-                genre_tag_id, duration, format, file_size,
+                duration, format, file_size,
                 bitrate, sample_rate, content_hash, sort_title, extra_tags,
                 file_modified_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 rel_path,
@@ -812,7 +811,6 @@ def ingest_file(
                 meta["track_total"],
                 meta["disc_number"],
                 meta["disc_total"],
-                genre_tag_id,
                 meta["duration"],
                 meta["format"],
                 meta["file_size"],
