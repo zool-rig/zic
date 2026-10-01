@@ -371,30 +371,36 @@ class ZicApi:
         song: Song | None = None,
     ) -> list[Song]:
         start_time = time.perf_counter()
+        if order_mode == AlbumSongOrder.SONG_ID and song is None:
+            raise ValueError(
+                f"Song must be provided with order mode to {order_mode}, got None"
+            )
+
         query = self.get_song_query()
         query.push("AND songs.album_id =")
         query.push_bind(album.id)
-        if order_mode == AlbumSongOrder.TRACK_NUM:
-            query.push("ORDER BY songs.track_number")
-        elif order_mode == AlbumSongOrder.RANDOM:
+        if order_mode == AlbumSongOrder.RANDOM:
             query.push("ORDER BY RANDOM()")
-        elif order_mode == AlbumSongOrder.SONG_ID:
-            if song is None:
-                raise ValueError(
-                    f"Song must be provided with order mode to {order_mode}, got None"
-                )
+        else:
+            # Album order: disc, then track (untagged tracks last), with a
+            # stable tie-break for missing or duplicated track numbers.
             query.push(
-                "ORDER BY CASE WHEN songs.track_number IS NULL THEN 1 ELSE 0 END,"
+                "ORDER BY COALESCE(songs.disc_number, 1), "
+                "songs.track_number IS NULL, songs.track_number, "
+                "songs.sort_title, songs.id"
             )
-            query.push("((songs.track_number - ")
-            query.push_bind(song.track_number)
-            query.push(") + 10000) % 10000")
 
         with RowFactory(self.connection, sqlite3.Row):
             cur = self.connection.execute(*query.build())
             rows = cur.fetchall()
 
         songs = self.get_songs_from_rows(rows)
+
+        if order_mode == AlbumSongOrder.SONG_ID:
+            # Start exactly at the requested song (matched by id, not by
+            # track number) and wrap around to the beginning of the album.
+            start = next((i for i, s in enumerate(songs) if s.id == song.id), 0)
+            songs = songs[start:] + songs[:start]
 
         LOGGER.debug(
             f"{len(songs)} songs from {album.name} fetched in {time.perf_counter() - start_time:.3f}s"

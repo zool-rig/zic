@@ -220,8 +220,10 @@ class AlbumView(QWidget):
         self.clear_songs()
         for song in self.songs:
             widget = SongWidget(song, self.cover.dominant_color if self.cover else None)
+            # Bind the album at creation time, like the song, so a widget
+            # always emits the (album, song) pair it was built with.
             widget.play_song_requested.connect(
-                lambda s=song: self.play_song_requested.emit(self.album, s)
+                lambda s=song, a=self.album: self.play_song_requested.emit(a, s)
             )
             self.songs_v_layout.addWidget(widget)
             self.song_widgets.append(widget)
@@ -229,6 +231,10 @@ class AlbumView(QWidget):
 
     def clear_songs(self) -> None:
         for song_widget in self.song_widgets:
+            # deleteLater() alone leaves the widget in the layout (visible and
+            # clickable) until the event loop runs: detach it right away.
+            self.songs_v_layout.removeWidget(song_widget)
+            song_widget.setParent(None)
             song_widget.deleteLater()
         self.song_widgets.clear()
         self.widget_song_map.clear()

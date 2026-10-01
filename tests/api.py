@@ -56,6 +56,45 @@ def test_get_album_songs_song_id_order_wraps_around(api):
     assert [s.track_number for s in ordered] == [3, 1, 2]
 
 
+def _add_song(api, song_id, album_id, track_number, disc_number=None):
+    api.connection.execute(
+        "INSERT INTO songs (id, path, title, artist_credit, album_id, track_number, "
+        "disc_number, duration, format, file_size) "
+        "VALUES (?, ?, ?, 'Air', ?, ?, ?, 180.0, 'mp3', 1000)",
+        (song_id, f"extra/{song_id}.mp3", f"Song {song_id}", album_id, track_number, disc_number),
+    )
+
+
+def test_get_album_songs_song_id_order_starts_at_untagged_song(api):
+    album = _album(api, "Talkie Walkie")
+    _add_song(api, 100, album.id, None)
+    _add_song(api, 101, album.id, None)
+    clicked = next(s for s in api.get_album_songs(album) if s.id == 101)
+
+    ordered = api.get_album_songs(album, order_mode=AlbumSongOrder.SONG_ID, song=clicked)
+
+    assert ordered[0].id == 101
+    assert len(ordered) == 3
+
+
+def test_get_album_songs_song_id_order_picks_the_right_disc(api):
+    album = _album(api, "Talkie Walkie")  # song 6: disc NULL (= 1), track 1
+    _add_song(api, 100, album.id, 1, disc_number=2)
+    _add_song(api, 101, album.id, 2, disc_number=2)
+    clicked = next(s for s in api.get_album_songs(album) if s.id == 100)
+
+    ordered = api.get_album_songs(album, order_mode=AlbumSongOrder.SONG_ID, song=clicked)
+
+    assert [s.id for s in ordered] == [100, 101, 6]
+
+
+def test_get_album_songs_track_num_order_sorts_by_disc_first(api):
+    album = _album(api, "Talkie Walkie")
+    _add_song(api, 100, album.id, 1, disc_number=2)
+
+    assert [s.id for s in api.get_album_songs(album)] == [6, 100]
+
+
 def test_get_album_songs_song_id_order_requires_a_song(api):
     album = _album(api, "Moon Safari")
     with pytest.raises(ValueError):
