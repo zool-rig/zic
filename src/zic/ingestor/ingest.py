@@ -433,7 +433,7 @@ def compute_hash(path: Path) -> str:
     return h.hexdigest()
 
 
-def set_metadata(conn, key: str, value: str) -> None:
+def set_metadata(conn: sqlite3.Connection, key: str, value: str) -> None:
     conn.execute(
         """
         INSERT INTO metadata (key, value) VALUES (?, ?)
