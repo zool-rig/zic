@@ -156,8 +156,8 @@ class LikesWidget(QWidget):
 
     def init_widgets(self) -> None:
         self.likes_lbl = QLabel("Likes : 0")
-        self.like_btn = make_toolbutton("icons/like.png", tooltip="Like")
-        self.dislike_btn = make_toolbutton("icons/dislike.png", tooltip="Dislike")
+        self.like_btn = make_toolbutton("icons/like.png", tooltip="Like (L)")
+        self.dislike_btn = make_toolbutton("icons/dislike.png", tooltip="Dislike (D)")
 
     def set_layout(self) -> None:
         self.main_v_layout.addLayout(self.top_h_layout)
@@ -600,6 +600,14 @@ class PlayerWidget(QWidget):
         self.current_song = self.playlist.previous()
         if self.current_song is not None:
             self.play()
+
+    def like_current_song(self) -> None:
+        if self.current_song is not None:
+            self.likes_widget.on_song_liked()
+
+    def dislike_current_song(self) -> None:
+        if self.current_song is not None:
+            self.likes_widget.on_song_disliked()
 
     def on_current_song_liked(self, value: int) -> None:
         self.current_song.like_count += value

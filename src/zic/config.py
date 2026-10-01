@@ -76,6 +76,8 @@ def default_key_bindings() -> dict[str, int]:
         "rewind": int(Qt.Key_Left),
         "volume_up": int(Qt.Key_Plus),
         "volume_down": int(Qt.Key_Minus),
+        "like": int(Qt.Key_L),
+        "dislike": int(Qt.Key_D),
     }
 
 
@@ -111,7 +113,9 @@ class UserConfig:
                 data["muted"],
                 data["explorer_sort_order"],
                 data["explorer_sorting_mode"],
-                data["key_bindings"],
+                # Merge so actions added since the config was saved still
+                # get their default key.
+                {**default_key_bindings(), **data["key_bindings"]},
             )
         LOGGER.debug(f"User config loaded : {USER_CONFIG_PATH}")
         return config

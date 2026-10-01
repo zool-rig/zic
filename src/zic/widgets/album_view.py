@@ -9,6 +9,15 @@ from zic.widgets.cover_thumbnail import DEFAULT_COVER, CoverThumbnail
 from zic.widgets.sound_wave import SoundWave
 
 
+def format_songs_info(songs: list[Song]) -> str:
+    """'12 songs · 47 min', or '25 songs · 1 h 12 min'."""
+    count = f"{len(songs)} song{'s' if len(songs) != 1 else ''}"
+    minutes = round(sum(song.duration for song in songs) / 60)
+    hours, minutes = divmod(minutes, 60)
+    duration = f"{hours} h {minutes:02d} min" if hours else f"{minutes} min"
+    return f"{count} · {duration}"
+
+
 class SongWidget(QWidget):
     play_song_requested = Signal(Song)
 
@@ -122,6 +131,7 @@ class AlbumView(QWidget):
         self.title_lbl = None
         self.artist_lbl = None
         self.genres_lbl = None
+        self.songs_info_lbl = None
         self.play_btn = None
         self.play_random_btn = None
         self.info_btn = None
@@ -153,6 +163,7 @@ class AlbumView(QWidget):
         self.title_lbl = QLabel()
         self.artist_lbl = QLabel()
         self.genres_lbl = QLabel()
+        self.songs_info_lbl = QLabel()
         self.play_btn = make_toolbutton("icons/play.png", tooltip="Play")
         self.play_random_btn = make_toolbutton(
             "icons/shuffle.png", tooltip="Play random"
@@ -174,6 +185,7 @@ class AlbumView(QWidget):
         self.cover_v_layout.addWidget(self.title_lbl)
         self.cover_v_layout.addWidget(self.artist_lbl)
         self.cover_v_layout.addWidget(self.genres_lbl)
+        self.cover_v_layout.addWidget(self.songs_info_lbl)
         self.cover_v_layout.addLayout(self.buttons_h_layout)
         self.buttons_h_layout.addWidget(self.play_btn)
         self.buttons_h_layout.addWidget(self.play_random_btn)
@@ -201,6 +213,7 @@ class AlbumView(QWidget):
             (self.title_lbl, Qt.AlignCenter),
             (self.artist_lbl, Qt.AlignCenter),
             (self.genres_lbl, Qt.AlignCenter),
+            (self.songs_info_lbl, Qt.AlignCenter),
             (self.top_h_layout, Qt.AlignRight),
         ):
             layout.setAlignment(alignment)
@@ -218,7 +231,9 @@ class AlbumView(QWidget):
         self.title_lbl.setText(album.name)
         self.artist_lbl.setText(album.artist.name)
         self.genres_lbl.setText(", ".join(g.name for g in album.genres))
+        self.genres_lbl.setVisible(bool(album.genres))
         self.songs = self.api.get_album_songs(self.album)
+        self.songs_info_lbl.setText(format_songs_info(self.songs))
         self.clear_songs()
         for song in self.songs:
             widget = SongWidget(song, self.cover.dominant_color if self.cover else None)

@@ -8,6 +8,7 @@ from zic.config import (
     ConfigNotFoundError,
     UserConfig,
     app_config_exists,
+    default_key_bindings,
     get_app_config,
     get_user_config,
 )
@@ -93,6 +94,18 @@ def test_user_config_save_and_load_round_trip(app_paths):
     reloaded = UserConfig.load()
     assert reloaded.volume == 77
     assert reloaded.muted is True
+    assert reloaded.key_bindings["shuffle"] == 999
+
+
+def test_user_config_load_adds_new_default_key_bindings(app_paths):
+    # A config saved before the "like" action existed.
+    config = UserConfig.load()
+    del config.key_bindings["like"]
+    config.key_bindings["shuffle"] = 999
+    config.save()
+
+    reloaded = UserConfig.load()
+    assert reloaded.key_bindings["like"] == default_key_bindings()["like"]
     assert reloaded.key_bindings["shuffle"] == 999
 
 

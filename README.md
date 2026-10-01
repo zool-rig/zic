@@ -148,6 +148,8 @@ While running the ingestor, you can specify your Discogs API credentials with th
 | Left arrow | Rewind playback (5s) |
 | + | Volume up |
 | - | Volume down |
+| l | Like current song |
+| d | Dislike current song |
 
 ## CLI Reference
 

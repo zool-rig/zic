@@ -49,6 +49,8 @@ class ZicUI(QDialog):
             "rewind": self.rewind,
             "volume_up": self.volume_up,
             "volume_down": self.volume_down,
+            "like": self.like_current_song,
+            "dislike": self.dislike_current_song,
         }
 
         # Layouts
@@ -192,6 +194,7 @@ class ZicUI(QDialog):
         self.play_random_btn.clicked.connect(self.on_play_random_btn_clicked)
         self.reload_btn.clicked.connect(self.reload)
         self.album_explorer.album_selected.connect(self.on_album_selected)
+        self.album_explorer.album_play_requested.connect(self.play_album)
         self.album_view.play_album_requested.connect(self.play_album)
         self.album_view.shuffle_album_requested.connect(self.shuffle_album)
         self.album_view.play_song_requested.connect(self.play_song)
@@ -330,6 +333,12 @@ class ZicUI(QDialog):
 
     def toggle_play_pause(self) -> None:
         self.player_widget.toggle_play_pause()
+
+    def like_current_song(self) -> None:
+        self.player_widget.like_current_song()
+
+    def dislike_current_song(self) -> None:
+        self.player_widget.dislike_current_song()
 
     def mute_sound(self) -> None:
         self.player_widget.volume_slider.toggle_mute()

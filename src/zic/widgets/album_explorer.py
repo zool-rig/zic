@@ -16,7 +16,7 @@ from PySide6.QtCore import (
     Signal,
     Slot,
 )
-from PySide6.QtGui import QAction, QColor, QCursor, QWheelEvent
+from PySide6.QtGui import QAction, QColor, QCursor, QMouseEvent, QWheelEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCompleter,
@@ -474,6 +474,8 @@ class AlbumCompletionModel(QAbstractListModel):
 
 
 class AlbumExplorerView(QListView):
+    album_double_clicked = Signal(QModelIndex)
+
     def __init__(self) -> None:
         super().__init__()
         self.setObjectName("AlbumExplorerView")
@@ -515,6 +517,19 @@ class AlbumExplorerView(QListView):
 
         self.create_item_widgets()
         self.schedule_prefetch()
+
+    def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
+        super().mouseDoubleClickEvent(event)
+        # Not QListView.doubleClicked: the first click opens the album view,
+        # which can resize the explorer and reflow the grid, so the album
+        # under the cursor may differ from the one pressed and Qt then drops
+        # the signal. Play the album selected by that first click instead.
+        if (
+            event.button() == Qt.LeftButton
+            and self.indexAt(event.position().toPoint()).isValid()
+            and self.currentIndex().isValid()
+        ):
+            self.album_double_clicked.emit(self.currentIndex())
 
     def get_widget_for_album(self, album_id: int) -> AlbumItemWidget | None:
         return self._item_widgets.get(album_id)
@@ -611,6 +626,7 @@ class SortingMode(Enum):
 
 class AlbumExplorer(QWidget):
     album_selected = Signal(Album, AlbumCover)
+    album_play_requested = Signal(Album)
 
     def __init__(self, api: QWidget) -> None:
         super().__init__()
@@ -724,6 +740,7 @@ class AlbumExplorer(QWidget):
         self.view.selectionModel().currentChanged.connect(
             self.on_album_selection_changed
         )
+        self.view.album_double_clicked.connect(self.on_album_double_clicked)
         self.search_edt.editingFinished.connect(self.on_filter_changed)
         self.sort_btn.clicked.connect(self.show_sort_menu)
 
@@ -773,6 +790,11 @@ class AlbumExplorer(QWidget):
             album,
             current.data(COVER_ROLE),
         )
+
+    def on_album_double_clicked(self, index: QModelIndex) -> None:
+        album = index.data(Qt.UserRole)
+        if album is not None:
+            self.album_play_requested.emit(album)
 
     def set_artist_filters(self, artists: list[Artist]) -> None:
         self._current_artists = artists
