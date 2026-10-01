@@ -192,3 +192,39 @@ QMenuBar::item::selected {
     border-radius: 8px;
     
 }
+
+/* Scroll bars: Qt wraps each scroll bar in a container widget (and adds a
+   corner widget where both meet) that inherits the opaque QWidget
+   background, drawing dark squares over the rounded frame corners. */
+#qt_scrollarea_hcontainer, #qt_scrollarea_vcontainer {
+    background-color: transparent;
+}
+
+QAbstractScrollArea::corner {
+    background-color: transparent;
+    border: none;
+}
+
+/* Disabled state */
+QToolButton:disabled, QPushButton:disabled, QLineEdit:disabled {
+    background-color: #0D1117;
+    border: 1px solid #1C2330;
+    color: #4A5466;
+}
+
+QLabel:disabled {
+    color: #4A5466;
+}
+
+QSlider::sub-page:horizontal:disabled {
+    background-color: #2A3342;
+}
+
+QSlider::add-page:horizontal:disabled {
+    background-color: #11161E;
+}
+
+QSlider::handle:horizontal:disabled {
+    background-color: #3A4556;
+    border: 1px solid #2A3342;
+}

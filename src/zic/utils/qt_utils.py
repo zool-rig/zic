@@ -1,10 +1,12 @@
 from typing import Any
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QColor, QIcon
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QLabel,
+    QProxyStyle,
+    QStyleOption,
     QToolButton,
     QWidget,
 )
@@ -43,6 +45,28 @@ def make_toolbutton(
         button.setObjectName(name)
 
     return button
+
+
+class FadedDisabledIconStyle(QProxyStyle):
+    """Draws disabled icons semi-transparent. Qt's default disabled mode
+    turns icons gray, which leaves light icons on a dark theme almost
+    unchanged."""
+
+    DISABLED_OPACITY = 0.3
+
+    def generatedIconPixmap(
+        self, mode: QIcon.Mode, pixmap: QPixmap, option: QStyleOption
+    ) -> QPixmap:
+        if mode != QIcon.Mode.Disabled:
+            return super().generatedIconPixmap(mode, pixmap, option)
+        faded = QPixmap(pixmap.size())
+        faded.setDevicePixelRatio(pixmap.devicePixelRatio())
+        faded.fill(Qt.transparent)
+        painter = QPainter(faded)
+        painter.setOpacity(self.DISABLED_OPACITY)
+        painter.drawPixmap(0, 0, pixmap)
+        painter.end()
+        return faded
 
 
 def set_label_font_size(label: QLabel, font_size: int) -> None:

@@ -21,8 +21,10 @@ def launch_ui() -> None:
     from zic.config import app_config_exists, get_app_config
     from zic.resources import get_resource
     from zic.utils.instance_lock import acquire_instance_lock
+    from zic.utils.qt_utils import FadedDisabledIconStyle
 
     qapp = QApplication(sys.argv)
+    qapp.setStyle(FadedDisabledIconStyle())
     qapp.setWindowIcon(QIcon(get_resource("icons/zic.ico")))
 
     if not app_config_exists():
