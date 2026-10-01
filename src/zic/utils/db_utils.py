@@ -63,4 +63,6 @@ def check_database(conn: sqlite3.Connection) -> bool:
 
 class InvalidDatabaseError(Exception):
     def __init__(self, db_path: os.PathLike) -> None:
-        super().__init__(f"Databse {db_path} is corrupted or not a valid zic database.")
+        super().__init__(
+            f"Database {db_path} is corrupted or not a valid zic database."
+        )
