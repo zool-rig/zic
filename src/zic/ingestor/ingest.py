@@ -63,7 +63,40 @@ YEAR_RE = re.compile(r"(\d{4})")
 # genre field from scrobble-based taggers -- not actual musical genres.
 YEAR_OR_DECADE_RE = re.compile(r"^(?:\d{4}|\d{2}s|\d{4}s)$")
 
-GENRE_SPLIT_RE = re.compile(r"\s*[;/]|,\s*")
+# Separators between several genres in a single tag ("Rock; Pop",
+# "Funk / Soul", "Rap & Hip-Hop", "Soul and R&B"...).
+GENRE_SPLIT_RE = re.compile(r"\s*(?:[;,/&+|]|\band\b)\s*")
+# Genre names that contain a separator but must stay whole. Matched
+# case-insensitively, after "_" has been turned into spaces.
+GENRE_PROTECTED = [
+    "r&b",
+    "r & b",
+    "r'n'b",
+    "rnb",
+    "r and b",
+    "rhythm & blues",
+    "rhythm and blues",
+    "rock & roll",
+    "rock and roll",
+    "rock 'n' roll",
+    "rock'n'roll",
+    "drum & bass",
+    "drum and bass",
+    "drum'n'bass",
+    "d&b",
+    "stage & screen",  # Discogs category (soundtracks, musicals...)
+    "brass & military",  # Discogs category
+]
+GENRE_PROTECTED_RE = re.compile(
+    r"(?<!\w)(?:"
+    + "|".join(re.escape(g) for g in sorted(GENRE_PROTECTED, key=len, reverse=True))
+    + r")(?!\w)"
+)
+# Tokens that don't split into genres on their own: "hip_hop_rap" (a
+# flattened "Hip-Hop/Rap") would otherwise stay a single unknown genre.
+GENRE_ALIASES = {
+    "hip hop rap": {"hip hop", "rap"},
+}
 # Personal/list-style tags that occasionally end up in the genre field
 # (e.g. via tools that copy a user's Last.fm tag cloud into ID3/MP4 tags),
 # not actual musical genres. Necessarily incomplete: catches known recurring
@@ -217,10 +250,28 @@ def extract_year(raw_date: str | None) -> int | None:
 
 
 def split_genres(raw: str | None) -> set[str]:
+    """Splits a raw genre tag into lowercased genre names, keeping names
+    that contain a separator whole ("R&B", "Drum & Bass"...)."""
     if not raw:
-        return []
-    parts = [clean_name(p) for p in GENRE_SPLIT_RE.split(raw)]
-    return {p.lower() for p in parts if p}
+        return set()
+    text = raw.lower().replace("_", " ")
+
+    # Swap protected names for placeholders so the split leaves them alone.
+    protected: list[str] = []
+
+    def protect(match: re.Match) -> str:
+        protected.append(match.group(0))
+        return f"\x00{len(protected) - 1}\x00"
+
+    text = GENRE_PROTECTED_RE.sub(protect, text)
+
+    genres: set[str] = set()
+    for part in GENRE_SPLIT_RE.split(text):
+        part = re.sub(r"\x00(\d+)\x00", lambda m: protected[int(m.group(1))], part)
+        part = clean_name(part)
+        if part:
+            genres.update(GENRE_ALIASES.get(part, {part}))
+    return genres
 
 
 def is_year_or_decade(token: str) -> bool:
@@ -418,7 +469,10 @@ def get_album_discogs_data(
         if "year" in r and not result["year"]:
             result["year"] = r["year"]
         if "genre" in r:
-            result["genres"].update(g.strip().lower() for g in r["genre"])
+            # Discogs categories can be compound ("Funk / Soul",
+            # "Folk, World, & Country"): split them like file tags.
+            for genre in r["genre"]:
+                result["genres"].update(split_genres(genre))
         # if "style" in r:
         #     result["genres"].update(g.strip().lower() for g in r["style"])
 
@@ -891,6 +945,14 @@ def ingest(
             if files_to_commit == FILES_PER_COMMIT:
                 conn.commit()
                 files_to_commit = 0
+
+        # Genres no album links to anymore (e.g. compound names split since
+        # the last scan) would still show up in the genre filter.
+        cur = conn.execute(
+            "DELETE FROM genres WHERE id NOT IN (SELECT genre_id FROM album_genres)"
+        )
+        if cur.rowcount:
+            LOGGER.info(f"Unused genres removed : {cur.rowcount}")
 
         set_metadata(conn, "last_ingest", datetime.now(UTC).isoformat())
 

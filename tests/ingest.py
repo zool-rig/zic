@@ -90,8 +90,45 @@ def test_split_genres_splits_on_semicolon_and_comma():
 
 
 def test_split_genres_empty_input():
-    assert split_genres(None) == []
-    assert split_genres("") == []
+    assert split_genres(None) == set()
+    assert split_genres("") == set()
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("Funk / Soul", {"funk", "soul"}),
+        ("Folk, World, & Country", {"folk", "world", "country"}),
+        ("Rap & Hip-Hop", {"rap", "hip-hop"}),
+        ("Soul and R&B", {"soul", "r&b"}),
+        ("Rock+Pop|Jazz", {"rock", "pop", "jazz"}),
+        ("hip_hop_rap", {"hip hop", "rap"}),
+        ("trip_hop", {"trip hop"}),
+    ],
+)
+def test_split_genres_splits_compound_tags(raw, expected):
+    assert split_genres(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("R&B", {"r&b"}),
+        ("R & B", {"r & b"}),
+        ("Rhythm and Blues", {"rhythm and blues"}),
+        ("Rock & Roll; Blues", {"rock & roll", "blues"}),
+        ("Drum and Bass / Jungle", {"drum and bass", "jungle"}),
+        ("Stage & Screen", {"stage & screen"}),
+        ("Pop, R&B & Soul", {"pop", "r&b", "soul"}),
+    ],
+)
+def test_split_genres_keeps_protected_names_whole(raw, expected):
+    assert split_genres(raw) == expected
+
+
+def test_split_genres_does_not_split_inside_words():
+    # "and" is a separator only as a whole word.
+    assert split_genres("Grand Band, Andean") == {"grand band", "andean"}
 
 
 @pytest.mark.parametrize(
