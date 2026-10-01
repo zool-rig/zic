@@ -500,6 +500,11 @@ class AlbumExplorerView(QListView):
 
     def setModel(self, model: QAbstractItemModel) -> None:
         super().setModel(model)
+        # Qt deletes index widgets itself when their rows go away (filtering
+        # or model reset): drop our references so they never point to a
+        # deleted widget.
+        model.modelAboutToBeReset.connect(self._item_widgets.clear)
+        model.rowsAboutToBeRemoved.connect(self.forget_item_widgets)
         model.modelReset.connect(self.create_item_widgets)
         model.rowsInserted.connect(self.create_item_widgets)
         model.dataChanged.connect(self.on_model_data_changed)
@@ -510,6 +515,16 @@ class AlbumExplorerView(QListView):
 
         self.create_item_widgets()
         self.schedule_prefetch()
+
+    def get_widget_for_album(self, album_id: int) -> AlbumItemWidget | None:
+        return self._item_widgets.get(album_id)
+
+    def forget_item_widgets(self, parent: QModelIndex, first: int, last: int) -> None:
+        model = self.model()
+        for row in range(first, last + 1):
+            album = model.index(row, 0, parent).data(Qt.UserRole)
+            if album is not None:
+                self._item_widgets.pop(album.id, None)
 
     def create_item_widgets(self, *_) -> None:
         model = self.model()
@@ -739,8 +754,6 @@ class AlbumExplorer(QWidget):
         self.search_edt.setCompleter(completer)
 
     def fill(self) -> None:
-        if self.view is not None:
-            self.view._item_widgets.clear()
         albums = self.api.albums()
         self.model.set_albums(albums)
         self.title_lbl.setText(f"{len(albums)} - Albums")
@@ -862,7 +875,7 @@ class AlbumExplorer(QWidget):
         if self.view is None:
             return
 
-        return self.view._item_widgets.get(album.id)
+        return self.view.get_widget_for_album(album.id)
 
     def set_sorting_mode(self, mode: SortingMode, state: bool) -> None:
         self.sorting_mode = mode if state else SortingMode.NONE
