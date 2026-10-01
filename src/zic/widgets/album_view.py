@@ -168,7 +168,9 @@ class AlbumView(QWidget):
         self.cover_h_layout.addStretch()
         self.cover_h_layout.addLayout(self.cover_v_layout)
         self.cover_h_layout.addStretch()
-        self.cover_v_layout.addWidget(self.cover_thumbnail)
+        # Fixed-size cover: center it explicitly, otherwise it sticks to the
+        # left whenever a wider label (e.g. a long genre list) widens the column.
+        self.cover_v_layout.addWidget(self.cover_thumbnail, alignment=Qt.AlignHCenter)
         self.cover_v_layout.addWidget(self.title_lbl)
         self.cover_v_layout.addWidget(self.artist_lbl)
         self.cover_v_layout.addWidget(self.genres_lbl)
