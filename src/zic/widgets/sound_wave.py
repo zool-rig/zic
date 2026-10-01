@@ -34,7 +34,7 @@ class SoundWave(QWidget):
     def sizeHint(self) -> QSize:
         return QSize(
             self.bars * self.bar_width + (self.bars - 1) * self.spacing,
-            40,
+            self.minimumHeight(),
         )
 
     def animate(self) -> None:

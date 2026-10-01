@@ -50,7 +50,7 @@ from zic.widgets.strong_menu import StrongMenu
 from zic.widgets.toggle_switch import ToggleSwitch
 
 ALBUM_THUMBNAIL_SIZE = 140
-ALBUM_ITEM_SIZE = QSize(160, 220)
+ALBUM_ITEM_SIZE = QSize(160, 235)
 COVER_ROLE = Qt.UserRole + 1
 TEXT_ROLE = Qt.UserRole + 2
 PREFETCH_MARGIN_ROWS = 30
@@ -196,6 +196,11 @@ class AlbumItemWidget(QWidget):
         self.set_elided_text(self.title_lbl, self.album.name)
         self.set_elided_text(self.artist_lbl, self.album.artist.name)
         self.init_shadow()
+        # Keep the wave's room in the layout while hidden, so showing it
+        # never pushes the labels up over the cover.
+        policy = self.sound_wave.sizePolicy()
+        policy.setRetainSizeWhenHidden(True)
+        self.sound_wave.setSizePolicy(policy)
         self.sound_wave.hide()
 
     def set_elided_text(self, label: QLabel, text: str) -> None:
