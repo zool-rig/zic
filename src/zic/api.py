@@ -291,7 +291,12 @@ class ZicApi:
             for song in self.get_songs_from_rows(rows):
                 collected[song.id] = song
 
-        songs = list(collected.values())[:SONG_CHUNK_LIMIT]
+        # SQLite returns "IN (...)" rows sorted by id: shuffle before
+        # truncating, otherwise the oversampled chunk keeps (and plays first)
+        # the lowest ids only.
+        songs = list(collected.values())
+        random.shuffle(songs)
+        songs = songs[:SONG_CHUNK_LIMIT]
 
         LOGGER.debug(
             f"{len(songs)} random songs fetched in {time.perf_counter() - start_time:.3f}s"

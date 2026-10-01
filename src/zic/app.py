@@ -367,6 +367,9 @@ class ZicUI(QDialog):
         self.album_explorer.start_playing_album_display(album)
 
     def jump_to_artists(self, artists: list[Artist]) -> None:
+        if not self.toggle_artists_btn.isChecked():
+            self.toggle_artists_btn.setChecked(True)
+            self.on_filter_toggled(self.toggle_artists_btn)
         self.artist_filter_widget.select_artists(artists)
 
     def show_about_dialog(self) -> None:

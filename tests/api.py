@@ -56,6 +56,20 @@ def test_get_album_songs_song_id_order_wraps_around(api):
     assert [s.track_number for s in ordered] == [3, 1, 2]
 
 
+def test_fetch_random_songs_is_not_biased_towards_low_ids(api):
+    album = _album(api, "Talkie Walkie")
+    for song_id in range(100, 400):
+        _add_song(api, song_id, album.id, None)
+
+    first_ids = [api.fetch_random_songs()[0].id for _ in range(30)]
+    max_ids = [max(s.id for s in api.fetch_random_songs()) for _ in range(30)]
+
+    # Library ids span 1..399: an unbiased pick can't always start low, and
+    # a 50-song chunk should regularly reach the top of the range.
+    assert sum(i > 200 for i in first_ids) >= 5
+    assert sum(i > 300 for i in max_ids) >= 25
+
+
 def _add_song(api, song_id, album_id, track_number, disc_number=None):
     api.connection.execute(
         "INSERT INTO songs (id, path, title, artist_credit, album_id, track_number, "
