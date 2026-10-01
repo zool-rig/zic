@@ -10,7 +10,7 @@ class Playlist:
             raise ValueError(
                 "You need to provide at least one function that fetches songs"
             )
-        self.fetch_func: Callable[[], list[Song]] = self.fetch_funcs.pop(0)
+        self.fetch_func: Callable[[set[int]], list[Song]] = self.fetch_funcs.pop(0)
         self.played_song_ids: set[int] = set()
         self.songs: Iterator | None = self.fetch_songs()
         self.current: Song | None = None
