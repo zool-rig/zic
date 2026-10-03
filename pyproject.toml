@@ -17,6 +17,7 @@ dependencies = [
     "secret-type>=0.3.0",
     "plotly>=7.1.0",
     "pandas>=3.0.6",
+    "rich>=15.0.0",
 ]
 
 [build-system]

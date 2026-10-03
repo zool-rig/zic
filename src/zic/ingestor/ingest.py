@@ -17,6 +17,7 @@ from PIL import Image
 from secret_type.typing.types import StringLike
 
 from zic.ingestor.discogs_secret import DiscogsSecret, InvalidDiscogsSecrets
+from zic.ingestor.progress import IngestProgress
 from zic.logging import get_logger
 from zic.utils.text import fold_diacritics
 
@@ -902,11 +903,9 @@ def ingest(
         conn.execute("PRAGMA foreign_keys = ON")
         init_db(conn)
 
-        counts = {"created": 0, "updated": 0, "unchanged": 0, "error": 0, "skipped": 0}
         cover_attempted: set[int] = set()
         genres_reset: set[int] = set()
         discogs_albums_data: dict[int, dict[str, Any]] = {}
-        file_count = 0
         files_to_commit = 0
 
         genres_name_id_map = {
@@ -914,42 +913,45 @@ def ingest(
             for id_, gname in conn.execute("SELECT id, name FROM genres")
         }
 
-        for path in find_audio_files(root):
-            file_count += 1
-            files_to_commit += 1
-            try:
-                status = ingest_file(
-                    conn,
-                    path,
-                    root,
-                    rescan,
-                    discogs_secret,
-                    cover_attempted,
-                    discogs_albums_data,
-                    genres_name_id_map,
-                    genres_reset,
-                )
-                counts[status] += 1
-                LOGGER.info(f"Song {status} : '{path.relative_to(root)}'")
-            except Exception as e:  # noqa BLE001
-                counts["error"] += 1
-                LOGGER.error(f"Failed to ingest '{path.relative_to(root)}': {e!r}")
+        # Listed upfront to know the total; sorted so that each album's
+        # files are processed (and logged) together.
+        paths = sorted(find_audio_files(root))
 
-            if files_to_commit == FILES_PER_COMMIT:
-                conn.commit()
-                files_to_commit = 0
+        with IngestProgress(root, db_path, rescan, len(paths), LOGGER) as progress:
+            for path in paths:
+                progress.start_file(path)
+                files_to_commit += 1
+                try:
+                    status = ingest_file(
+                        conn,
+                        path,
+                        root,
+                        rescan,
+                        discogs_secret,
+                        cover_attempted,
+                        discogs_albums_data,
+                        genres_name_id_map,
+                        genres_reset,
+                    )
+                    # Unchanged files are the bulk of an incremental scan, and
+                    # skipped ones already logged why: the counters suffice.
+                    log = LOGGER.info if status in ("created", "updated") else LOGGER.debug
+                    log(f"Song {status} : '{path.relative_to(root)}'")
+                except Exception as e:  # noqa BLE001
+                    status = "error"
+                    LOGGER.error(f"Failed to ingest '{path.relative_to(root)}': {e!r}")
+                progress.finish_file(status)
 
-        # Genres no album links to anymore (e.g. compound names split since
-        # the last scan) would still show up in the genre filter.
-        cur = conn.execute(
-            "DELETE FROM genres WHERE id NOT IN (SELECT genre_id FROM album_genres)"
-        )
-        if cur.rowcount:
-            LOGGER.info(f"Unused genres removed : {cur.rowcount}")
+                if files_to_commit == FILES_PER_COMMIT:
+                    conn.commit()
+                    files_to_commit = 0
 
-        set_metadata(conn, "last_ingest", datetime.now(UTC).isoformat())
+            # Genres no album links to anymore (e.g. compound names split
+            # since the last scan) would still show up in the genre filter.
+            cur = conn.execute(
+                "DELETE FROM genres WHERE id NOT IN (SELECT genre_id FROM album_genres)"
+            )
+            if cur.rowcount:
+                LOGGER.info(f"Unused genres removed : {cur.rowcount}")
 
-        LOGGER.info("Ingest finished !")
-        LOGGER.info(f"File count : {file_count}")
-        for status, count in sorted(counts.items(), key=lambda x: x[0]):
-            LOGGER.info(f"{status.title()} : {count}")
+            set_metadata(conn, "last_ingest", datetime.now(UTC).isoformat())
