@@ -6,7 +6,6 @@ import re
 import sqlite3
 import sys
 import time
-import unicodedata
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -19,6 +18,7 @@ from secret_type.typing.types import StringLike
 
 from zic.ingestor.discogs_secret import DiscogsSecret, InvalidDiscogsSecrets
 from zic.logging import get_logger
+from zic.utils.text import fold_diacritics
 
 SCHEMA_PATH = Path(__file__).parent.parent / "schema.sql"
 
@@ -165,13 +165,6 @@ def init_db(conn: sqlite3.Connection) -> None:
 # ---------------------------------------------------------------------------
 # Normalization / parsing
 # ---------------------------------------------------------------------------
-
-
-def fold_diacritics(s: str) -> str:
-    """ "Taï Phong" -> "Tai Phong": strips accents for matching purposes."""
-    return "".join(
-        c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c)
-    )
 
 
 def clean_name(name: str | None) -> str | None:

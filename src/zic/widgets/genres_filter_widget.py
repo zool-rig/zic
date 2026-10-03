@@ -35,3 +35,7 @@ class GenresFilterWidget(FilterListWidget):
     def on_list_selection_changed(self) -> None:
         items = super().on_list_selection_changed()
         self.app.album_explorer.set_genre_filters([item.genre for item in items])
+
+    def select_genres(self, genres: list[Genre]) -> None:
+        genre_ids = {genre.id for genre in genres}
+        self.select_items(lambda item: item.genre.id in genre_ids)

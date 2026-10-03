@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QAction, QCursor, QIcon
 from PySide6.QtWidgets import (
@@ -7,6 +9,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QListWidgetItem,
     QMenu,
     QVBoxLayout,
     QWidget,
@@ -15,6 +18,7 @@ from PySide6.QtWidgets import (
 from zic.config import get_user_config
 from zic.resources import get_resource
 from zic.utils.qt_utils import (
+    SignalsOFF,
     make_toolbutton,
     set_label_font_size,
     style_completer_popup,
@@ -130,6 +134,31 @@ class FilterListWidget(QWidget):
 
     def on_list_selection_changed(self) -> None:
         return self.list_widget.selectedItems()
+
+    def select_items(self, predicate: Callable[[QListWidgetItem], bool]) -> None:
+        """Replaces the selection with the items matching `predicate`."""
+        # The list is filled lazily on first show: it may still be empty here.
+        if not self.filled:
+            self.fill()
+        # A pending search could hide the items we're about to select.
+        if self.search_edt.text():
+            self.search_edt.clear()
+            self.filter()
+
+        first_item = None
+        # Replace the current selection, and apply the filter only once.
+        with SignalsOFF(self.list_widget):
+            self.list_widget.clearSelection()
+            for i in range(self.list_widget.count()):
+                item = self.list_widget.item(i)
+                if not predicate(item):
+                    continue
+                item.setSelected(True)
+                first_item = first_item or item
+        self.on_list_selection_changed()
+
+        if first_item is not None:
+            self.list_widget.scrollToItem(first_item)
 
     def show_context_menu(self) -> None:
         menu = QMenu(self)

@@ -118,6 +118,33 @@ QListView#CompleterPopup::item:selected {
     color: #151B24;
 }
 
+#SearchPopup {
+    background-color: #151B24;
+    border: 1px solid #2A3342;
+    border-radius: 8px;
+}
+
+QListView#SearchPopupList {
+    background-color: transparent;
+    border: none;
+    outline: none;
+}
+
+QListView#SearchPopupList::item {
+    padding: 6px 8px;
+}
+
+QListView#SearchPopupList::item:disabled {
+    color: #8B96A5;
+    padding: 8px 8px 2px 8px;
+}
+
+SongWidget[highlighted="true"] {
+    background-color: #1C2330;
+    border: 1px solid #35F0E0;
+    border-radius: 8px;
+}
+
 QSlider::sub-page:horizontal {
     background-color: #35F0E0;
     margin: 1px;

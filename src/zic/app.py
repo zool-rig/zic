@@ -22,6 +22,7 @@ from zic.api import ZicApi
 from zic.config import get_app_config, get_user_config
 from zic.models.album import Album, AlbumCover
 from zic.models.artist import Artist
+from zic.models.genre import Genre
 from zic.models.song import Song
 from zic.resources import get_resource
 from zic.utils.qt_utils import SignalsOFF, make_toolbutton, named_widget
@@ -195,6 +196,9 @@ class ZicUI(QDialog):
         self.reload_btn.clicked.connect(self.reload)
         self.album_explorer.album_selected.connect(self.on_album_selected)
         self.album_explorer.album_play_requested.connect(self.play_album)
+        self.album_explorer.search_result_selected.connect(
+            self.on_search_result_selected
+        )
         self.album_view.play_album_requested.connect(self.play_album)
         self.album_view.shuffle_album_requested.connect(self.shuffle_album)
         self.album_view.play_song_requested.connect(self.play_song)
@@ -380,6 +384,36 @@ class ZicUI(QDialog):
             self.toggle_artists_btn.setChecked(True)
             self.on_filter_toggled(self.toggle_artists_btn)
         self.artist_filter_widget.select_artists(artists)
+
+    def jump_to_genres(self, genres: list[Genre]) -> None:
+        if not self.toggle_genres_btn.isChecked():
+            self.toggle_genres_btn.setChecked(True)
+            self.on_filter_toggled(self.toggle_genres_btn)
+        self.genre_filter_widget.select_genres(genres)
+
+    def show_album(self, album: Album, highlighted_song: Song | None = None) -> None:
+        # Making the album current in the explorer opens it in the album view,
+        # unless it's hidden by a filter or already current.
+        self.album_explorer.reveal_album(album)
+        if (
+            self.album_view.isHidden()
+            or self.album_view.album is None
+            or self.album_view.album.id != album.id
+        ):
+            self.on_album_selected(album, self.api.get_album_cover_thumbnail(album))
+        if highlighted_song is not None:
+            self.album_view.highlight_song(highlighted_song)
+
+    def on_search_result_selected(self, result: Artist | Album | Genre | Song) -> None:
+        match result:
+            case Artist():
+                self.jump_to_artists([result])
+            case Genre():
+                self.jump_to_genres([result])
+            case Album():
+                self.show_album(result)
+            case Song():
+                self.show_album(result.album, highlighted_song=result)
 
     def show_about_dialog(self) -> None:
         meta = importlib.metadata.metadata("zic")

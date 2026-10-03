@@ -224,6 +224,53 @@ def test_random_playlist_starts_without_mood_and_picks_one_song_at_a_time(api):
         assert song.id in _mood_songs_ids(api)
 
 
+# --- search ----------------------------------------------------------------
+
+def test_search_finds_artists_albums_genres_and_songs(api):
+    results = api.search("air")
+    assert [a.name for a in results.artists] == ["Air"]
+    # "Air" is the artist of these albums: found through their context.
+    assert {a.name for a in results.albums} == {"Moon Safari", "Talkie Walkie"}
+    assert {s.album.artist.name for s in results.songs} == {"Air"}
+
+
+def test_search_is_accent_case_and_punctuation_insensitive(api):
+    results = api.search("FEMME d'Argént")
+    assert [s.title for s in results.songs] == ["La Femme d'Argent"]
+
+
+def test_search_ranks_name_matches_first(api):
+    # "Talisman" matches by title, before "Talkie Walkie"'s song by album.
+    results = api.search("tal")
+    assert results.songs[0].title == "Talisman"
+    assert [a.name for a in results.albums] == ["Talkie Walkie"]
+
+
+def test_search_tolerates_typos(api):
+    results = api.search("daft pnuk")
+    assert [a.name for a in results.artists] == ["Daft Punk"]
+    assert {s.title for s in results.songs} == {"One More Time", "Aerodynamic"}
+
+
+def test_search_respects_limit(api):
+    assert len(api.search("a", limit=2).songs) == 2
+
+
+def test_search_empty_text_returns_nothing(api):
+    assert api.search("  ").is_empty()
+
+
+def test_search_genres(api):
+    assert [g.name for g in api.search("french").genres] == ["french touch"]
+
+
+def test_search_index_is_rebuilt_after_invalidation(api):
+    first = api.search_index()
+    assert api.search_index() is first
+    api.invalidate_caches()
+    assert api.search_index() is not first
+
+
 # --- plays / likes ---------------------------------------------------------
 
 def test_record_song_play_increments_play_count(api):

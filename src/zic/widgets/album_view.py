@@ -87,6 +87,8 @@ class SongWidget(QWidget):
         self.play_btn.clicked.connect(lambda: self.play_song_requested.emit(self.song))
 
     def set_default(self) -> None:
+        # Lets the stylesheet paint this plain QWidget subclass (highlight).
+        self.setAttribute(Qt.WA_StyledBackground)
         self.main_h_layout.setAlignment(Qt.AlignLeft)
         self.sound_wave.hide()
         if self.color:
@@ -103,6 +105,11 @@ class SongWidget(QWidget):
         self.sound_wave.hide()
         self.sound_wave.stop()
 
+    def set_highlighted(self, state: bool) -> None:
+        self.setProperty("highlighted", state)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
 
 class AlbumView(QWidget):
     play_album_requested = Signal(Album)
@@ -116,6 +123,8 @@ class AlbumView(QWidget):
         self.cover: AlbumCover | None = None
         self.songs: list[Song] = []
         self.current_playing_widget: SongWidget | None = None
+        # Song widget to keep in view while the layout settles.
+        self.scroll_target: SongWidget | None = None
 
         # Layouts
         self.main_v_layout = None
@@ -196,6 +205,10 @@ class AlbumView(QWidget):
 
     def set_connections(self) -> None:
         self.close_btn.clicked.connect(self.hide)
+        scroll_bar = self.scroll_area.verticalScrollBar()
+        scroll_bar.rangeChanged.connect(self.ensure_scroll_target_visible)
+        # Any scroll by the user (wheel, drag, click) releases the target.
+        scroll_bar.actionTriggered.connect(self.release_scroll_target)
         self.play_btn.clicked.connect(
             lambda: self.play_album_requested.emit(self.album)
         )
@@ -247,6 +260,7 @@ class AlbumView(QWidget):
             self.widget_song_map[song.id] = widget
 
     def clear_songs(self) -> None:
+        self.scroll_target = None
         for song_widget in self.song_widgets:
             # deleteLater() alone leaves the widget in the layout (visible and
             # clickable) until the event loop runs: detach it right away.
@@ -279,5 +293,27 @@ class AlbumView(QWidget):
         if song.id not in self.widget_song_map:
             return
 
-        widget = self.widget_song_map[song.id]
-        self.scroll_area.ensureWidgetVisible(widget)
+        # Right after set_album() or show(), the layout takes a few event loop
+        # passes to place the song widgets: scrolling now would use stale
+        # positions, so scroll again each time the content height changes.
+        self.scroll_target = self.widget_song_map[song.id]
+        self.ensure_scroll_target_visible()
+
+    def ensure_scroll_target_visible(self) -> None:
+        if self.scroll_target is None:
+            return
+        # Vertically only: rows can be wider than the view, and scrolling
+        # sideways to fit one would hide the play buttons.
+        widget = self.scroll_target
+        self.scroll_area.ensureVisible(
+            0, widget.y() + widget.height() // 2, 0, widget.height()
+        )
+
+    def release_scroll_target(self) -> None:
+        self.scroll_target = None
+
+    def highlight_song(self, song: Song) -> None:
+        """Highlights the song until another album is shown."""
+        for song_id, widget in self.widget_song_map.items():
+            widget.set_highlighted(song_id == song.id)
+        self.scroll_to_song(song)

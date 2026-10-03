@@ -1,8 +1,10 @@
+import heapq
 import math
 import random
 import sqlite3
 import time
 from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -16,8 +18,10 @@ from zic.models.playlist import Playlist
 from zic.models.song import Song
 from zic.utils.db_utils import InvalidDatabaseError, RowFactory, check_database
 from zic.utils.query_builder import QueryBuilder
+from zic.utils.text import fuzzy_alternatives, match_rank, normalize_search_text
 
 SONG_CHUNK_LIMIT = 50
+SEARCH_RESULTS_LIMIT = 5
 LOGGER = get_logger("API")
 
 
@@ -25,6 +29,41 @@ class AlbumSongOrder(Enum):
     TRACK_NUM = 1
     RANDOM = 2
     SONG_ID = 3
+
+
+@dataclass(slots=True)
+class SearchResults:
+    artists: list[Artist] = field(default_factory=list)
+    albums: list[Album] = field(default_factory=list)
+    genres: list[Genre] = field(default_factory=list)
+    songs: list[Song] = field(default_factory=list)
+
+    def is_empty(self) -> bool:
+        return not (self.artists or self.albums or self.genres or self.songs)
+
+
+# A search entry: (name, context, "name context", item). The name is what's
+# ranked best, the context (e.g. the artist) only helps matching, and the
+# joined text allows a fast substring pre-filter.
+type SearchEntry[T] = tuple[str, str, str, T]
+
+
+def make_search_entry[T](name: str, context: str, item: T) -> SearchEntry[T]:
+    name, context = normalize_search_text(name), normalize_search_text(context)
+    return name, context, f"{name} {context}", item
+
+
+@dataclass(slots=True)
+class SearchIndex:
+    """Normalized search keys, built once so a search never re-normalizes
+    the whole library."""
+
+    artists: list[SearchEntry[Artist]]
+    albums: list[SearchEntry[Album]]
+    genres: list[SearchEntry[Genre]]
+    songs: list[SearchEntry[int]]  # song ids, songs are fetched on demand
+    vocabulary: set[str]  # words of artist, album and genre names (typo fixes)
+    known_text: str  # every indexed word, to tell typos from real words
 
 
 class ZicApi:
@@ -45,6 +84,7 @@ class ZicApi:
         self._artists_cache: list[Artist] | None = None
         self._genres_cache: list[Genre] | None = None
         self._albums_cache: list[Album] | None = None
+        self._search_index_cache: SearchIndex | None = None
 
         self.mood: set[int] | None = None
 
@@ -55,6 +95,7 @@ class ZicApi:
         self.invalidate_artists_cache()
         self.invalidate_genres_cache()
         self.invalidate_albums_cache()
+        self.invalidate_search_index()
 
     def _cache_artists(self) -> None:
         start_time = time.perf_counter()
@@ -610,3 +651,103 @@ class ZicApi:
         for genre in genres:
             extended.update(g.id for g in self.get_near_genres(genre))
         return extended
+
+    def _build_search_index(self) -> None:
+        start_time = time.perf_counter()
+        artists = [make_search_entry(a.name, "", a) for a in self.artists()]
+        albums = [make_search_entry(a.name, a.artist.name, a) for a in self.albums()]
+        genres = [make_search_entry(g.name, "", g) for g in self.genres()]
+        cur = self.connection.execute(
+            "SELECT id, title, artist_credit FROM songs WHERE hidden = FALSE"
+        )
+        songs = [
+            make_search_entry(title, credit, song_id)
+            for song_id, title, credit in cur.fetchall()
+        ]
+        vocabulary = {
+            word
+            for entries in (artists, albums, genres)
+            for _, _, text, _ in entries
+            for word in text.split()
+        }
+        known_text = "\n".join(
+            [*vocabulary, *(text for _, _, text, _ in songs)]
+        )
+        self._search_index_cache = SearchIndex(
+            artists, albums, genres, songs, vocabulary, known_text
+        )
+        LOGGER.debug(
+            f"Search index ({len(songs)} songs) built in "
+            f"{time.perf_counter() - start_time:.3f}s"
+        )
+
+    def invalidate_search_index(self) -> None:
+        self._search_index_cache = None
+
+    def search_index(self) -> SearchIndex:
+        if self._search_index_cache is None:
+            self._build_search_index()
+        return self._search_index_cache
+
+    @staticmethod
+    def _best_matches[T](
+        entries: list[SearchEntry[T]],
+        tokens: list[str],
+        alternatives: dict[str, list[str]],
+        limit: int,
+    ) -> list[T]:
+        # Ranking is costly: only rank entries containing the longest token
+        # (or one of its typo fixes), which every match must contain anyway.
+        longest = max(tokens, key=len)
+        candidates: dict[int, SearchEntry[T]] = {}
+        for needle in (longest, *alternatives.get(longest, ())):
+            candidates.update((id(e), e) for e in entries if needle in e[2])
+
+        ranked = (
+            (rank, i, item)
+            for i, (name, context, _, item) in enumerate(candidates.values())
+            if (rank := match_rank(tokens, name, context, alternatives)) is not None
+        )
+        return [item for *_, item in heapq.nsmallest(limit, ranked)]
+
+    def search(self, text: str, limit: int = SEARCH_RESULTS_LIMIT) -> SearchResults:
+        """Best artists, albums, genres and songs matching `text`. Case-,
+        accent-, punctuation- and word-order-insensitive, and tolerant to
+        small typos in artist, album and genre names."""
+        start_time = time.perf_counter()
+        tokens = normalize_search_text(text).split()
+        if not tokens:
+            return SearchResults()
+
+        index = self.search_index()
+        alternatives = fuzzy_alternatives(tokens, index.vocabulary, index.known_text)
+
+        def best[T](entries: list[SearchEntry[T]]) -> list[T]:
+            return self._best_matches(entries, tokens, alternatives, limit)
+
+        results = SearchResults(
+            artists=best(index.artists),
+            albums=best(index.albums),
+            genres=best(index.genres),
+            songs=self._get_songs_by_ids(best(index.songs)),
+        )
+        LOGGER.debug(
+            f"Search {text!r} done in {time.perf_counter() - start_time:.3f}s"
+        )
+        return results
+
+    def _get_songs_by_ids(self, song_ids: list[int]) -> list[Song]:
+        """Songs in the order of song_ids."""
+        if not song_ids:
+            return []
+
+        query = self.get_song_query()
+        query.push("AND songs.id IN")
+        query.push_binds(song_ids)
+
+        with RowFactory(self.connection, sqlite3.Row):
+            cur = self.connection.execute(*query.build())
+            rows = cur.fetchall()
+
+        songs_by_id = {song.id: song for song in self.get_songs_from_rows(rows)}
+        return [songs_by_id[i] for i in song_ids if i in songs_by_id]

@@ -19,7 +19,6 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QAction, QColor, QCursor, QMouseEvent, QWheelEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QCompleter,
     QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
@@ -36,15 +35,11 @@ from zic.config import get_app_config, get_user_config
 from zic.models.album import Album, AlbumCover
 from zic.models.artist import Artist
 from zic.models.genre import Genre
-from zic.utils.qt_utils import (
-    SignalsOFF,
-    make_toolbutton,
-    set_label_font_size,
-    style_completer_popup,
-)
+from zic.utils.qt_utils import SignalsOFF, make_toolbutton, set_label_font_size
 from zic.utils.query_builder import QueryBuilder
 from zic.widgets.cover_thumbnail import DEFAULT_COVER, CoverThumbnail
 from zic.widgets.rules import VRule
+from zic.widgets.search_popup import SearchPopup
 from zic.widgets.sound_wave import SoundWave
 from zic.widgets.strong_menu import StrongMenu
 from zic.widgets.toggle_switch import ToggleSwitch
@@ -319,6 +314,12 @@ class AlbumExplorerModel(QAbstractListModel):
             return None
         return self._albums[index.row()]
 
+    def index_of_album(self, album: Album) -> QModelIndex:
+        for row, a in enumerate(self._albums):
+            if a.id == album.id:
+                return self.index(row, 0)
+        return QModelIndex()
+
     def rowCount(self, parent: QModelIndex | None = None) -> int:
         # All rows are available immediately: album metadata is already
         # fully in memory (see api.albums()). Only cover thumbnails are
@@ -436,46 +437,6 @@ class AlbumFilterProxy(QSortFilterProxyModel):
             return (left_album.year or 0) < (right_album.year or 0)
 
         return False
-
-
-class AlbumCompletionModel(QAbstractListModel):
-    def __init__(
-        self, source_model: AlbumExplorerModel, text_role: int = TEXT_ROLE
-    ) -> None:
-        super().__init__()
-        self._source = source_model
-        self._text_role = text_role
-        self._entries: list[tuple[str, int]] = []  # (texte, source_row)
-
-        self._rebuild()
-        self._source.modelReset.connect(self._rebuild)
-        self._source.rowsInserted.connect(self._rebuild)
-        self._source.rowsRemoved.connect(self._rebuild)
-
-    def _rebuild(self, *_) -> None:
-        self.beginResetModel()
-        seen: dict[str, int] = {}  # texte -> source_row (garde la première occurrence)
-        for row in range(self._source.rowCount()):
-            for text in self._source.index(row, 0).data(self._text_role) or []:
-                if text not in seen:
-                    seen[text] = row
-        self._entries = list(seen.items())
-        self.endResetModel()
-
-    def rowCount(self, parent: QModelIndex | None = None) -> int:
-        if parent is None:
-            parent = QModelIndex()
-        return 0 if parent.isValid() else len(self._entries)
-
-    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Any | None:
-        if not index.isValid():
-            return None
-        text, source_row = self._entries[index.row()]
-        if role in (Qt.DisplayRole, Qt.EditRole):
-            return text
-        if role == Qt.UserRole:
-            return self._source.index(source_row, 0).data(Qt.UserRole)  # -> Album
-        return None
 
 
 class AlbumExplorerView(QListView):
@@ -632,6 +593,7 @@ class SortingMode(Enum):
 class AlbumExplorer(QWidget):
     album_selected = Signal(Album, AlbumCover)
     album_play_requested = Signal(Album)
+    search_result_selected = Signal(object)  # Artist | Album | Genre | Song
 
     def __init__(self, api: QWidget) -> None:
         super().__init__()
@@ -657,7 +619,7 @@ class AlbumExplorer(QWidget):
         self.model = None
         self.proxy = None
         self.view = None
-        self.completion_model = None
+        self.search_popup = None
 
         # Menu
         self.title_toggle = None
@@ -694,9 +656,9 @@ class AlbumExplorer(QWidget):
         # self.settings_btn = make_toolbutton("icons/burger-bar.png", tooltip="Settings")
         self.tags_container = FilterTagsContainer()
         self.model = AlbumExplorerModel(self.api)
-        self.completion_model = AlbumCompletionModel(self.model)
         self.proxy = AlbumFilterProxy()
         self.view = AlbumExplorerView()
+        self.search_popup = SearchPopup(self.api, self.search_edt)
         self.proxy.sorting_mode = self.sorting_mode
         self.proxy.setSourceModel(self.model)
         self.view.setModel(self.proxy)
@@ -747,6 +709,7 @@ class AlbumExplorer(QWidget):
         )
         self.view.album_double_clicked.connect(self.on_album_double_clicked)
         self.search_edt.editingFinished.connect(self.on_filter_changed)
+        self.search_popup.result_selected.connect(self.on_search_result_selected)
         self.sort_btn.clicked.connect(self.show_sort_menu)
 
     def on_filter_changed(self) -> None:
@@ -754,6 +717,22 @@ class AlbumExplorer(QWidget):
         # present in the model, so filtering is instant regardless of
         # cover-loading state.
         self.proxy.setFilterFixedString(self.search_edt.text())
+
+    def on_search_result_selected(self, result: object) -> None:
+        # The typed text was a search, not a filter: drop it so it doesn't
+        # filter the explorer as soon as the line edit loses the focus.
+        self.search_edt.clear()
+        self.on_filter_changed()
+        self.search_result_selected.emit(result)
+
+    def reveal_album(self, album: Album) -> None:
+        """Scrolls to the album and makes it current, if the active
+        filters don't hide it."""
+        index = self.proxy.mapFromSource(self.model.index_of_album(album))
+        if not index.isValid():
+            return
+        self.view.scrollTo(index, QAbstractItemView.PositionAtCenter)
+        self.view.setCurrentIndex(index)
 
     def set_default(self) -> None:
         self.main_v_layout.setAlignment(Qt.AlignTop)
@@ -767,13 +746,6 @@ class AlbumExplorer(QWidget):
             )
 
         set_label_font_size(self.title_lbl, 12)
-        completer = QCompleter(
-            self.completion_model,
-            completionRole=Qt.DisplayRole,
-            caseSensitivity=Qt.CaseInsensitive,
-        )
-        style_completer_popup(completer)
-        self.search_edt.setCompleter(completer)
 
     def fill(self) -> None:
         albums = self.api.albums()
