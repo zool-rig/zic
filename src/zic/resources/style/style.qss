@@ -139,6 +139,53 @@ QListView#SearchPopupList::item:disabled {
     padding: 8px 8px 2px 8px;
 }
 
+QSpinBox {
+    padding: 5px;
+    background-color: #151B24;
+    border-radius: 8px;
+    border: 1px solid #2A3342;
+}
+
+QSpinBox::hover {
+    background-color: #1C2330;
+}
+
+QCheckBox::indicator {
+    width: 14px;
+    height: 14px;
+    background-color: #151B24;
+    border: 1px solid #2A3342;
+    border-radius: 4px;
+}
+
+QCheckBox::indicator:hover {
+    border-color: #35F0E0;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #35F0E0;
+    border-color: #35F0E0;
+}
+
+#DialogTitleLabel {
+    font-size: 15pt;
+}
+
+#DialogSectionLabel {
+    color: #8B96A5;
+    font-weight: bold;
+    padding-top: 10px;
+}
+
+#DialogNoteLabel {
+    color: #8B96A5;
+    font-style: italic;
+}
+
+#DialogErrorLabel {
+    color: #FF6B6B;
+}
+
 SongWidget[highlighted="true"] {
     background-color: #1C2330;
     border: 1px solid #35F0E0;

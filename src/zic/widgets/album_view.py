@@ -2,24 +2,19 @@ from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QScrollArea, QVBoxLayout, QWidget
 
 from zic.api import ZicApi
+from zic.dialogs.album_info_dialog import AlbumInfoDialog
+from zic.dialogs.song_info_dialog import SongInfoDialog
 from zic.models.album import Album, AlbumCover
 from zic.models.song import Song
+from zic.utils.formatting import format_duration, format_songs_info
 from zic.utils.qt_utils import make_toolbutton, set_label_font_size
 from zic.widgets.cover_thumbnail import DEFAULT_COVER, CoverThumbnail
 from zic.widgets.sound_wave import SoundWave
 
 
-def format_songs_info(songs: list[Song]) -> str:
-    """'12 songs · 47 min', or '25 songs · 1 h 12 min'."""
-    count = f"{len(songs)} song{'s' if len(songs) != 1 else ''}"
-    minutes = round(sum(song.duration for song in songs) / 60)
-    hours, minutes = divmod(minutes, 60)
-    duration = f"{hours} h {minutes:02d} min" if hours else f"{minutes} min"
-    return f"{count} · {duration}"
-
-
 class SongWidget(QWidget):
     play_song_requested = Signal(Song)
+    info_requested = Signal(Song)
 
     def __init__(self, song: Song, color: str | None) -> None:
         super().__init__()
@@ -62,8 +57,7 @@ class SongWidget(QWidget):
             if self.song.track_number is not None
             else self.song.title
         )
-        seconds = int(self.song.duration)
-        self.duration_lbl = QLabel(f"{seconds // 60:02d}:{seconds % 60:02d}")
+        self.duration_lbl = QLabel(format_duration(self.song.duration))
         self.artist_credit_lbl = QLabel(self.song.artist_credit)
         self.info_btn = make_toolbutton(
             "icons/info.png",
@@ -85,6 +79,7 @@ class SongWidget(QWidget):
 
     def set_connections(self) -> None:
         self.play_btn.clicked.connect(lambda: self.play_song_requested.emit(self.song))
+        self.info_btn.clicked.connect(lambda: self.info_requested.emit(self.song))
 
     def set_default(self) -> None:
         # Lets the stylesheet paint this plain QWidget subclass (highlight).
@@ -115,6 +110,9 @@ class AlbumView(QWidget):
     play_album_requested = Signal(Album)
     shuffle_album_requested = Signal(Album)
     play_song_requested = Signal(Album, Song)
+    # Metadata of this album or of its songs changed: id of the album after
+    # the edit (it changes when merged into another album).
+    album_edited = Signal(int)
 
     def __init__(self, api: ZicApi) -> None:
         super().__init__()
@@ -215,6 +213,7 @@ class AlbumView(QWidget):
         self.play_random_btn.clicked.connect(
             lambda: self.shuffle_album_requested.emit(self.album)
         )
+        self.info_btn.clicked.connect(self.show_album_info)
 
     def set_default(self) -> None:
         for layout, alignment in (
@@ -255,9 +254,24 @@ class AlbumView(QWidget):
             widget.play_song_requested.connect(
                 lambda s=song, a=self.album: self.play_song_requested.emit(a, s)
             )
+            widget.info_requested.connect(self.show_song_info)
             self.songs_v_layout.addWidget(widget)
             self.song_widgets.append(widget)
             self.widget_song_map[song.id] = widget
+
+    def show_album_info(self) -> None:
+        if self.album is None:
+            return
+        dialog = AlbumInfoDialog(self.api, self.album, self.cover, self.window())
+        dialog.exec()
+        if dialog.changed:
+            self.album_edited.emit(dialog.album_id)
+
+    def show_song_info(self, song: Song) -> None:
+        dialog = SongInfoDialog(self.api, song, self.window())
+        dialog.exec()
+        if dialog.changed:
+            self.album_edited.emit(song.album.id)
 
     def clear_songs(self) -> None:
         self.scroll_target = None

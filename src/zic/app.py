@@ -202,6 +202,7 @@ class ZicUI(QDialog):
         self.album_view.play_album_requested.connect(self.play_album)
         self.album_view.shuffle_album_requested.connect(self.shuffle_album)
         self.album_view.play_song_requested.connect(self.play_song)
+        self.album_view.album_edited.connect(self.on_album_edited)
         self.player_widget.song_started.connect(self.on_song_started)
         self.player_widget.song_paused.connect(self.on_song_paused)
         self.player_widget.song_finished.connect(self.on_song_finished)
@@ -399,10 +400,18 @@ class ZicUI(QDialog):
             self.album_view.isHidden()
             or self.album_view.album is None
             or self.album_view.album.id != album.id
+            # The explorer loads covers lazily: it may not have had this one.
+            or self.album_view.cover is None
         ):
             self.on_album_selected(album, self.api.get_album_cover_thumbnail(album))
         if highlighted_song is not None:
             self.album_view.highlight_song(highlighted_song)
+
+    def on_album_edited(self, album_id: int) -> None:
+        self.reload()
+        album = next((a for a in self.api.albums() if a.id == album_id), None)
+        if album is not None:
+            self.show_album(album)
 
     def on_search_result_selected(self, result: Artist | Album | Genre | Song) -> None:
         match result:

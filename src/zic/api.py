@@ -7,9 +7,23 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from zic.config import get_app_config
+from zic.ingestor.ingest import (
+    clean_name,
+    compute_hash,
+    genre_match_key,
+    get_or_create_artist,
+    get_or_create_genre,
+    link_album_genre,
+    make_sort_title,
+    normalize_name,
+    resolve_artist_field,
+    set_song_artists,
+    split_genres,
+)
 from zic.logging import get_logger
 from zic.models.album import Album, AlbumCover
 from zic.models.artist import Artist
@@ -18,6 +32,13 @@ from zic.models.playlist import Playlist
 from zic.models.song import Song
 from zic.utils.db_utils import InvalidDatabaseError, RowFactory, check_database
 from zic.utils.query_builder import QueryBuilder
+from zic.utils.tags import (
+    TagWriteError,
+    check_writable,
+    format_number_pair,
+    read_tags,
+    write_tags,
+)
 from zic.utils.text import fuzzy_alternatives, match_rank, normalize_search_text
 
 SONG_CHUNK_LIMIT = 50
@@ -64,6 +85,22 @@ class SearchIndex:
     songs: list[SearchEntry[int]]  # song ids, songs are fetched on demand
     vocabulary: set[str]  # words of artist, album and genre names (typo fixes)
     known_text: str  # every indexed word, to tell typos from real words
+
+
+@dataclass(slots=True)
+class SongEdit:
+    title: str
+    artist_credit: str
+    track_number: int | None
+    disc_number: int | None
+
+
+@dataclass(slots=True)
+class AlbumEdit:
+    name: str
+    artist_name: str
+    year: int | None
+    genres: list[str]
 
 
 class ZicApi:
@@ -210,8 +247,8 @@ class ZicApi:
             self._cache_albums()
         return self._albums_cache
 
-    def get_song_query(self) -> QueryBuilder:
-        return QueryBuilder(
+    def get_song_query(self, include_hidden: bool = False) -> QueryBuilder:
+        query = QueryBuilder(
             "SELECT "
             "songs.id AS id, "
             "songs.path AS path, "
@@ -245,8 +282,11 @@ class ZicApi:
             "FROM songs "
             "LEFT JOIN albums ON albums.id = songs.album_id "
             "LEFT JOIN artists ON artists.id = albums.artist_id "
-            "WHERE hidden = FALSE"
+            "WHERE TRUE"
         )
+        if not include_hidden:
+            query.push("AND hidden = FALSE")
+        return query
 
     def get_songs_from_rows(self, rows: list[Any]) -> list[Song]:
         genres_by_album = self._fetch_genres_by_album({row["album_id"] for row in rows})
@@ -751,3 +791,220 @@ class ZicApi:
 
         songs_by_id = {song.id: song for song in self.get_songs_from_rows(rows)}
         return [songs_by_id[i] for i in song_ids if i in songs_by_id]
+
+    # --- metadata edition ---------------------------------------------------
+    #
+    # Files stay the source of truth: edits are written to the tags first,
+    # then to the DB the same way the ingestor would read them back, so a
+    # rescan finds the same values. Only changed fields are written.
+
+    def _sync_file_state(self, song_id: int, path: Path) -> None:
+        """Records the rewritten file as already scanned, so the next
+        incremental scan doesn't re-ingest it."""
+        stat = path.stat()
+        self.connection.execute(
+            "UPDATE songs SET file_modified_at = ?, file_size = ?, content_hash = ? "
+            "WHERE id = ?",
+            (f"{stat.st_mtime:.6f}", stat.st_size, compute_hash(path), song_id),
+        )
+
+    def _delete_orphans(self) -> None:
+        self.connection.execute(
+            "DELETE FROM genres WHERE id NOT IN (SELECT genre_id FROM album_genres)"
+        )
+        self.connection.execute(
+            "DELETE FROM artists "
+            "WHERE id NOT IN (SELECT artist_id FROM albums) "
+            "AND id NOT IN (SELECT artist_id FROM song_artists)"
+        )
+
+    def update_song(self, song: Song, edit: SongEdit) -> bool:
+        """Returns whether anything changed."""
+        title = clean_name(edit.title)
+        if not title:
+            raise ValueError("A song needs a title.")
+        artist_tag = clean_name(edit.artist_credit)
+        artist_credit = resolve_artist_field(artist_tag)
+        path = Path(self.get_song_path(song))
+
+        tags: dict[str, str | None] = {}
+        if title != song.title:
+            tags["title"] = title
+        if artist_credit != song.artist_credit:
+            tags["artist"] = artist_tag
+            # Without an album artist tag, the ingestor falls back on the
+            # song artist to find the album: pin it so the album stays put.
+            if "albumartist" not in read_tags(path):
+                tags["albumartist"] = song.album.artist.name
+        if edit.track_number != song.track_number:
+            tags["tracknumber"] = format_number_pair(
+                edit.track_number, song.track_total
+            )
+        if edit.disc_number != song.disc_number:
+            tags["discnumber"] = format_number_pair(edit.disc_number, song.disc_total)
+        if not tags:
+            return False
+
+        check_writable([path])
+        write_tags(path, tags)
+
+        with self.connection:
+            self.connection.execute(
+                "UPDATE songs SET title = ?, sort_title = ?, artist_credit = ?, "
+                "track_number = ?, disc_number = ? WHERE id = ?",
+                (
+                    title,
+                    make_sort_title(title),
+                    artist_credit,
+                    edit.track_number,
+                    edit.disc_number,
+                    song.id,
+                ),
+            )
+            if "artist" in tags:
+                set_song_artists(self.connection, song.id, artist_credit)
+                self._delete_orphans()
+            self._sync_file_state(song.id, path)
+
+        self.invalidate_caches()
+        LOGGER.info(f"Song (id: {song.id}) updated: {sorted(tags)}")
+        return True
+
+    def set_song_hidden(self, song: Song, hidden: bool) -> None:
+        """Hides the song from the library (app-only flag, no tag)."""
+        self.connection.execute(
+            "UPDATE songs SET hidden = ? WHERE id = ?", (int(hidden), song.id)
+        )
+        self.connection.commit()
+        song.hidden = hidden
+        self.invalidate_search_index()
+        LOGGER.debug(f"Song (id: {song.id}) {'hidden' if hidden else 'shown'}")
+
+    def get_hidden_album_songs(self, album: Album) -> list[Song]:
+        query = self.get_song_query(include_hidden=True)
+        query.push("AND songs.hidden = TRUE AND songs.album_id =")
+        query.push_bind(album.id)
+        query.push("ORDER BY songs.sort_title, songs.id")
+
+        with RowFactory(self.connection, sqlite3.Row):
+            cur = self.connection.execute(*query.build())
+            rows = cur.fetchall()
+        return self.get_songs_from_rows(rows)
+
+    def find_album_by_name(self, name: str, exclude: Album | None = None) -> Album | None:
+        """The album the ingestor would file songs tagged `name` under."""
+        norm = normalize_name(clean_name(name) or "")
+        return next(
+            (
+                a
+                for a in self.albums()
+                if normalize_name(a.name) == norm
+                and (exclude is None or a.id != exclude.id)
+            ),
+            None,
+        )
+
+    def update_album(self, album: Album, edit: AlbumEdit) -> int | None:
+        """Applies the edit to every song of the album, hidden ones included.
+        Returns the album id afterwards (None if nothing changed): renaming an
+        album to the name of another one merges it into that one, as a rescan
+        would."""
+        name = clean_name(edit.name)
+        if not name:
+            raise ValueError("An album needs a name.")
+        artist_tag = clean_name(edit.artist_name)
+        artist_name = resolve_artist_field(artist_tag)
+        genres = split_genres("; ".join(edit.genres))
+        genres_changed = {genre_match_key(g) for g in genres} != {
+            genre_match_key(g.name) for g in album.genres
+        }
+
+        tags: dict[str, str | None] = {}
+        if name != album.name:
+            tags["album"] = name
+        if artist_name != album.artist.name:
+            tags["albumartist"] = artist_tag
+        if edit.year != album.year:
+            tags["date"] = str(edit.year) if edit.year else None
+        if genres_changed:
+            tags["genre"] = "; ".join(sorted(genres)) or None
+        if not tags:
+            return None
+
+        files = [
+            (song_id, get_app_config().root_dir / rel_path)
+            for song_id, rel_path in self.connection.execute(
+                "SELECT id, path FROM songs WHERE album_id = ?", (album.id,)
+            )
+        ]
+        check_writable([path for _, path in files])
+        merge_target = self.find_album_by_name(name, exclude=album) if "album" in tags else None
+
+        written = 0
+        try:
+            for _, path in files:
+                write_tags(path, tags)
+                written += 1
+        except TagWriteError as e:
+            if not written:
+                raise
+            raise TagWriteError(
+                f"{e}\n{written} of {len(files)} files were already updated: "
+                "check for new songs to resync the library."
+            ) from e
+
+        with self.connection:
+            album_id = album.id
+            if merge_target is not None:
+                album_id = merge_target.id
+                genres |= {g.name for g in merge_target.genres}
+                self.connection.execute(
+                    "UPDATE songs SET album_id = ? WHERE album_id = ?",
+                    (album_id, album.id),
+                )
+                self.connection.execute(
+                    "INSERT OR IGNORE INTO covers_thumbnails "
+                    "(album_id, thumbnail, mime_type, width, height, dominant_color) "
+                    "SELECT ?, thumbnail, mime_type, width, height, dominant_color "
+                    "FROM covers_thumbnails WHERE album_id = ?",
+                    (album_id, album.id),
+                )
+                self.connection.execute("DELETE FROM albums WHERE id = ?", (album.id,))
+
+            raw_date = tags.get("date", album.raw_date)
+            self.connection.execute(
+                "UPDATE albums SET name = ?, normalized_name = ?, artist_id = ?, "
+                "year = ?, raw_date = ? WHERE id = ?",
+                (
+                    name,
+                    normalize_name(name),
+                    get_or_create_artist(self.connection, artist_name),
+                    edit.year,
+                    raw_date,
+                    album_id,
+                ),
+            )
+
+            if genres_changed or merge_target is not None:
+                genres_name_id_map = {
+                    genre_match_key(gname): id_
+                    for id_, gname in self.connection.execute(
+                        "SELECT id, name FROM genres"
+                    )
+                }
+                self.connection.execute(
+                    "DELETE FROM album_genres WHERE album_id = ?", (album_id,)
+                )
+                for genre in genres:
+                    genre_id = get_or_create_genre(
+                        self.connection, genre, genres_name_id_map
+                    )
+                    link_album_genre(self.connection, album_id, genre_id)
+
+            self._delete_orphans()
+            for song_id, path in files:
+                self._sync_file_state(song_id, path)
+
+        self.invalidate_caches()
+        LOGGER.info(f"Album (id: {album.id}) updated: {sorted(tags)}")
+        return album_id
