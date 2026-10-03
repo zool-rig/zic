@@ -46,6 +46,8 @@ class ZicApi:
         self._genres_cache: list[Genre] | None = None
         self._albums_cache: list[Album] | None = None
 
+        self.mood: set[int] | None = None
+
     def disconnect(self) -> None:
         self.connection.close()
 
@@ -252,7 +254,49 @@ class ZicApi:
 
         return songs
 
-    def fetch_random_songs(self, exclude_ids: set[int] | None = None) -> list[Song]:
+    def fetch_random_songs(
+        self, exclude_ids: set[int] | None = None, limit: int = SONG_CHUNK_LIMIT
+    ) -> list[Song]:
+        if self.mood:
+            songs = self.fetch_mood_songs(exclude_ids, limit)
+            if songs:
+                return songs
+            LOGGER.debug("No song matches the current mood, falling back to random")
+        return self.fetch_any_random_songs(exclude_ids, limit)
+
+    def fetch_mood_songs(
+        self, exclude_ids: set[int] | None = None, limit: int = SONG_CHUNK_LIMIT
+    ) -> list[Song]:
+        start_time = time.perf_counter()
+        if not self.mood:
+            return []
+
+        query = self.get_song_query()
+        query.push(
+            "AND songs.album_id IN (SELECT album_id FROM album_genres WHERE genre_id IN"
+        )
+        query.push_binds(self.mood)
+        query.push(")")
+
+        if exclude_ids:
+            query.push("AND songs.id NOT IN")
+            query.push_binds(exclude_ids)
+
+        query.push(f"ORDER BY RANDOM() LIMIT {int(limit)}")
+
+        with RowFactory(self.connection, sqlite3.Row):
+            cur = self.connection.execute(*query.build())
+            rows = cur.fetchall()
+
+        songs = self.get_songs_from_rows(rows)
+        LOGGER.debug(
+            f"{len(songs)} mood songs fetched in {time.perf_counter() - start_time:.3f}s"
+        )
+        return songs
+
+    def fetch_any_random_songs(
+        self, exclude_ids: set[int] | None = None, limit: int = SONG_CHUNK_LIMIT
+    ) -> list[Song]:
         start_time = time.perf_counter()
 
         row = self.connection.execute(
@@ -267,9 +311,9 @@ class ZicApi:
         attempts = 0
         max_attempts = 5  # safety net against pathological gaps/exclusions
 
-        while len(collected) < SONG_CHUNK_LIMIT and attempts < max_attempts:
+        while len(collected) < limit and attempts < max_attempts:
             attempts += 1
-            needed = SONG_CHUNK_LIMIT - len(collected)
+            needed = limit - len(collected)
             # Oversample a bit: some picks will miss (gaps, hidden, excluded,
             # already collected), so ask for more ids than we still need.
             sample_size = min(needed * 3, max_id - min_id + 1)
@@ -296,7 +340,7 @@ class ZicApi:
         # the lowest ids only.
         songs = list(collected.values())
         random.shuffle(songs)
-        songs = songs[:SONG_CHUNK_LIMIT]
+        songs = songs[:limit]
 
         LOGGER.debug(
             f"{len(songs)} random songs fetched in {time.perf_counter() - start_time:.3f}s"
@@ -304,7 +348,22 @@ class ZicApi:
         return songs
 
     def get_random_playlist(self) -> Playlist:
-        return Playlist(self.fetch_random_songs)
+        # Starts fully random, then follows the mood. Songs are fetched one at
+        # a time so that each pick reflects the mood at the moment it's needed.
+        self.reset_mood()
+        return Playlist(lambda exclude_ids: self.fetch_random_songs(exclude_ids, 1))
+
+    def set_mood(self, song: Song) -> None:
+        """Random songs will now match the extended genres of this song."""
+        self.mood = self.get_extended_genre_ids(song.album.genres) or None
+        LOGGER.debug(
+            f"Mood set from song (id: {song.id}): "
+            f"{[g.name for g in self.genres() if g.id in (self.mood or ())]}"
+        )
+
+    def reset_mood(self) -> None:
+        self.mood = None
+        LOGGER.debug("Mood reset")
 
     def get_album_cover_thumbnail(self, album: Album) -> AlbumCover | None:
         start_time = time.perf_counter()
@@ -440,13 +499,9 @@ class ZicApi:
         self, album: Album, exclude_ids: set[int] | None = None
     ) -> list[Song]:
         start_time = time.perf_counter()
-        near_genres = album.genres[:]
-        if not near_genres:
+        near_genres_ids = self.get_extended_genre_ids(album.genres)
+        if not near_genres_ids:
             return []
-
-        for genre in album.genres:
-            near_genres.extend(self.get_near_genres(genre))
-        near_genres_ids = {g.id for g in near_genres}
 
         query = self.get_song_query()
         query.push(
@@ -548,3 +603,10 @@ class ZicApi:
             key=lambda x: x[1],
         )
         return [genre for genre, _ in ranked[:max_genres]]
+
+    def get_extended_genre_ids(self, genres: list[Genre]) -> set[int]:
+        """Ids of the given genres and of their near genres."""
+        extended = {g.id for g in genres}
+        for genre in genres:
+            extended.update(g.id for g in self.get_near_genres(genre))
+        return extended

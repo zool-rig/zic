@@ -170,6 +170,60 @@ def test_get_album_playlist_starts_with_the_albums_own_songs(api):
     assert all(s.album.id == album.id for s in played)
 
 
+def _mood_songs_ids(api):
+    return {
+        s.id
+        for album in api.albums()
+        if album.genres
+        for s in api.get_album_songs(album)
+    }
+
+
+def test_set_mood_uses_extended_genres_of_the_song(api):
+    # Discovery is only "french touch": its near genres are included too.
+    api.set_mood(_first_song(api, "Discovery"))
+    assert api.mood == {g.id for g in api.genres()}
+
+
+def test_set_mood_from_song_without_genres_is_fully_random(api):
+    api.set_mood(_first_song(api, "Talkie Walkie"))
+    assert api.mood is None
+
+
+def test_fetch_random_songs_follows_the_mood(api):
+    api.set_mood(_first_song(api, "Discovery"))
+    for _ in range(10):
+        songs = api.fetch_random_songs()
+        assert songs
+        assert {s.id for s in songs} <= _mood_songs_ids(api)
+
+
+def test_fetch_random_songs_falls_back_to_random_when_mood_is_exhausted(api):
+    api.set_mood(_first_song(api, "Discovery"))
+    songs = api.fetch_random_songs(exclude_ids=_mood_songs_ids(api))
+    assert songs
+    assert all(s.album.name == "Talkie Walkie" for s in songs)
+
+
+def test_reset_mood(api):
+    api.set_mood(_first_song(api, "Discovery"))
+    api.reset_mood()
+    assert api.mood is None
+
+
+def test_random_playlist_starts_without_mood_and_picks_one_song_at_a_time(api):
+    api.set_mood(_first_song(api, "Discovery"))
+    playlist = api.get_random_playlist()
+    assert api.mood is None
+
+    playlist.next()
+    # A mood set while playing applies to the very next pick.
+    api.set_mood(_first_song(api, "Discovery"))
+    for _ in range(3):
+        song = playlist.next()
+        assert song.id in _mood_songs_ids(api)
+
+
 # --- plays / likes ---------------------------------------------------------
 
 def test_record_song_play_increments_play_count(api):

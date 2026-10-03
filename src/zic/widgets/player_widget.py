@@ -539,6 +539,7 @@ class PlayerWidget(QWidget):
 
     def on_song_finished(self) -> None:
         if self.current_song is not None:
+            self.app.api.set_mood(self.current_song)
             self.song_finished.emit(self.current_song)
         self.current_play_id = None
 
@@ -581,6 +582,7 @@ class PlayerWidget(QWidget):
             return
 
         self.app.api.mark_play_skipped(self.current_play_id)
+        self.app.api.reset_mood()
         self.current_play_id = None
 
     def next(self) -> None:
