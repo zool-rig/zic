@@ -26,6 +26,7 @@ LOG_COLORS = {"WARNING": "#F0C35A", "ERROR": "#FF6B6B", "CRITICAL": "#FF6B6B"}
 STATUSES = {
     "created": ("created", "#5AD17A"),
     "updated": ("updated", "#35F0E0"),
+    "moved": ("moved", "#7AA2F7"),
     "unchanged": ("unchanged", "#8B96A5"),
     "skipped": ("skipped", "#F0C35A"),
     "error": ("errors", "#FF6B6B"),

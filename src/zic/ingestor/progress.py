@@ -29,6 +29,7 @@ from rich.text import Text
 STATUSES: dict[str, tuple[str, str]] = {
     "created": ("created", "green"),
     "updated": ("updated", "cyan"),
+    "moved": ("moved", "blue"),
     "unchanged": ("unchanged", "bright_black"),
     "skipped": ("skipped", "yellow"),
     "error": ("errors", "red"),

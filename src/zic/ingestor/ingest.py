@@ -520,7 +520,8 @@ def get_or_create_album(
 ) -> int:
     norm = normalize_name(name)
     row = conn.execute(
-        "SELECT id FROM albums WHERE normalized_name = ?", (norm,)
+        "SELECT id FROM albums WHERE normalized_name = ? AND artist_id = ?",
+        (norm, artist_id),
     ).fetchone()
     if row:
         return row[0]
@@ -796,12 +797,28 @@ def ingest_file(
 
     sort_title = make_sort_title(meta["title"])
 
-    if existing:
-        song_id = existing[0]
+    song_id = existing[0] if existing else None
+    status = "updated"
+    if song_id is None:
+        same_content = conn.execute(
+            "SELECT id, path FROM songs WHERE content_hash = ?", (content_hash,)
+        ).fetchone()
+        if same_content and (root / same_content[1]).exists():
+            LOGGER.warning(
+                f"{rel_path} has the same content as {same_content[1]}, skipped"
+            )
+            return "skipped"
+        if same_content:
+            # Its file is gone: the same file was moved or renamed. Keep the
+            # song (plays, likes...) and point it to the new location.
+            song_id, status = same_content[0], "moved"
+            LOGGER.info(f"Song moved : '{same_content[1]}' -> '{rel_path}'")
+
+    if song_id is not None:
         conn.execute(
             """
             UPDATE songs SET
-                title = ?, artist_credit = ?, album_id = ?,
+                path = ?, title = ?, artist_credit = ?, album_id = ?,
                 track_number = ?, track_total = ?, disc_number = ?, disc_total = ?,
                 duration = ?, format = ?, file_size = ?,
                 bitrate = ?, sample_rate = ?, content_hash = ?,
@@ -810,6 +827,7 @@ def ingest_file(
             WHERE id = ?
             """,
             (
+                rel_path,
                 meta["title"],
                 artist_credit,
                 album_id,
@@ -830,16 +848,8 @@ def ingest_file(
             ),
         )
         set_song_artists(conn, song_id, artist_credit)
-        return "updated"
+        return status
     else:
-        same_hash = conn.execute(
-            "SELECT title FROM songs WHERE content_hash = ?", (content_hash,)
-        ).fetchone()
-        if same_hash:
-            LOGGER.warning(
-                f"{path.relative_to(root)} has the same content as {same_hash[0]}, skipped"
-            )
-            return "skipped"
         cur = conn.execute(
             """
             INSERT INTO songs (
@@ -878,6 +888,48 @@ def ingest_file(
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
+
+def remove_missing_songs(
+    conn: sqlite3.Connection, root: Path, scanned_paths: set[str]
+) -> int:
+    """Removes the songs whose file is gone (deleted, or moved and changed
+    on the way: unchanged moved files were already relocated by their
+    content hash). Their plays go with them."""
+    missing = [
+        (song_id, rel_path)
+        for song_id, rel_path in conn.execute("SELECT id, path FROM songs")
+        if rel_path not in scanned_paths and not (root / rel_path).exists()
+    ]
+    for song_id, rel_path in missing:
+        conn.execute("DELETE FROM songs WHERE id = ?", (song_id,))
+        LOGGER.info(f"Song removed (file not found) : '{rel_path}'")
+    if missing:
+        LOGGER.info(f"Missing songs removed : {len(missing)}")
+    return len(missing)
+
+
+def remove_orphans(conn: sqlite3.Connection) -> None:
+    """Albums without songs left (moved, removed, or regrouped under their
+    right artist), then the genres and artists nothing refers to anymore:
+    they would still show up in the explorer and the filters."""
+    for label, query in (
+        ("albums", "DELETE FROM albums WHERE id NOT IN (SELECT album_id FROM songs)"),
+        (
+            "genres",
+            "DELETE FROM genres WHERE id NOT IN (SELECT genre_id FROM album_genres)",
+        ),
+        (
+            "artists",
+            (
+                "DELETE FROM artists WHERE id NOT IN (SELECT artist_id FROM albums) "
+                "AND id NOT IN (SELECT artist_id FROM song_artists)"
+            ),
+        ),
+    ):
+        cur = conn.execute(query)
+        if cur.rowcount:
+            LOGGER.info(f"Unused {label} removed : {cur.rowcount}")
 
 
 def find_audio_files(root: Path):
@@ -952,12 +1004,14 @@ def ingest(
                     conn.commit()
                     files_to_commit = 0
 
-            # Genres no album links to anymore (e.g. compound names split
-            # since the last scan) would still show up in the genre filter.
-            cur = conn.execute(
-                "DELETE FROM genres WHERE id NOT IN (SELECT genre_id FROM album_genres)"
-            )
-            if cur.rowcount:
-                LOGGER.info(f"Unused genres removed : {cur.rowcount}")
+            if paths:
+                remove_missing_songs(conn, root, {str(p.relative_to(root)) for p in paths})
+            else:
+                # Most likely an unmounted drive or a wrong folder, rather
+                # than a library emptied on purpose: keep everything.
+                LOGGER.warning(
+                    f"No audio file found in {root}: missing songs are kept."
+                )
+            remove_orphans(conn)
 
             set_metadata(conn, "last_ingest", datetime.now(UTC).isoformat())

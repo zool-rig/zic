@@ -21,7 +21,9 @@ def test_counts_and_summary(tmp_path):
             progress.start_file(tmp_path / name)
             progress.finish_file(status)
 
-    assert progress.counts == {"created": 1, "updated": 0, "unchanged": 1, "skipped": 0, "error": 1}
+    assert progress.counts == {
+        "created": 1, "updated": 0, "moved": 0, "unchanged": 1, "skipped": 0, "error": 1
+    }
     assert progress.current == "c.mp3"
     output = progress.console.file.getvalue()
     assert "ZIC ingest" in output

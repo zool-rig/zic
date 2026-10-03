@@ -949,14 +949,19 @@ class ZicApi:
             rows = cur.fetchall()
         return self.get_songs_from_rows(rows)
 
-    def find_album_by_name(self, name: str, exclude: Album | None = None) -> Album | None:
-        """The album the ingestor would file songs tagged `name` under."""
+    def find_album(
+        self, name: str, artist_name: str, exclude: Album | None = None
+    ) -> Album | None:
+        """The album the ingestor would file songs tagged with this album
+        name and album artist under."""
         norm = normalize_name(clean_name(name) or "")
+        artist_norm = normalize_name(resolve_artist_field(clean_name(artist_name)))
         return next(
             (
                 a
                 for a in self.albums()
                 if normalize_name(a.name) == norm
+                and normalize_name(a.artist.name) == artist_norm
                 and (exclude is None or a.id != exclude.id)
             ),
             None,
@@ -964,9 +969,9 @@ class ZicApi:
 
     def update_album(self, album: Album, edit: AlbumEdit) -> int | None:
         """Applies the edit to every song of the album, hidden ones included.
-        Returns the album id afterwards (None if nothing changed): renaming an
-        album to the name of another one merges it into that one, as a rescan
-        would."""
+        Returns the album id afterwards (None if nothing changed): giving an
+        album the name and artist of another one merges it into that one, as
+        a rescan would."""
         name = clean_name(edit.name)
         if not name:
             raise ValueError("An album needs a name.")
@@ -996,7 +1001,11 @@ class ZicApi:
             )
         ]
         check_writable([path for _, path in files])
-        merge_target = self.find_album_by_name(name, exclude=album) if "album" in tags else None
+        merge_target = (
+            self.find_album(name, artist_name, exclude=album)
+            if "album" in tags or "albumartist" in tags
+            else None
+        )
 
         written = 0
         try:

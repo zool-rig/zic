@@ -15,10 +15,12 @@ CREATE TABLE albums (
     raw_date         TEXT,                   -- raw value of the "date" tag, format not guaranteed
     artist_id        INTEGER NOT NULL,       -- based on albumartist (fallback: artist of track 1, else unknown)
     is_compilation   INTEGER NOT NULL DEFAULT 0,
-    normalized_name  TEXT NOT NULL UNIQUE,   -- trim + lower, to deduplicate variants
+    normalized_name  TEXT NOT NULL,          -- trim + lower, to deduplicate variants
 
     FOREIGN KEY (artist_id) REFERENCES artists(id),
-    UNIQUE (name, artist_id)
+    -- Per artist: different artists may have albums with the same name
+    -- ("Greatest Hits", "Live"...).
+    UNIQUE (normalized_name, artist_id)
 );
 
 -- Cover thumbnails, kept separate from "albums" to keep its SELECTs light.

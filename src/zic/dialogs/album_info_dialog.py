@@ -136,9 +136,9 @@ class AlbumInfoDialog(MetadataDialog):
             self.details_form.setRowVisible(self.hidden_songs_container, False)
 
     def save(self) -> bool:
-        name = self.name_edt.text()
-        if name.strip() != self.album.name:
-            target = self.api.find_album_by_name(name, exclude=self.album)
+        name, artist_name = self.name_edt.text(), self.artist_edt.text()
+        if (name.strip(), artist_name.strip()) != (self.album.name, self.album.artist.name):
+            target = self.api.find_album(name, artist_name, exclude=self.album)
             if target is not None and not self.confirm_merge(target):
                 return False
 
@@ -146,7 +146,7 @@ class AlbumInfoDialog(MetadataDialog):
             self.album,
             AlbumEdit(
                 name=name,
-                artist_name=self.artist_edt.text(),
+                artist_name=artist_name,
                 year=optional_value(self.year_spin),
                 genres=self.genres_edt.text().split(","),
             ),

@@ -185,7 +185,9 @@ def test_update_album_removes_orphan_genres_and_artists(api, library_files):
 def test_update_album_renamed_like_another_merges_into_it(api, library_files):
     talkie = _album(api, "Talkie Walkie")
     moon = _album(api, "Moon Safari")
-    assert api.find_album_by_name("moon  SAFARI", exclude=talkie) == moon
+    assert api.find_album("moon  SAFARI", "AIR", exclude=talkie) == moon
+    # Same name, other artist: a different album.
+    assert api.find_album("Moon Safari", "Daft Punk", exclude=talkie) is None
 
     album_id = api.update_album(talkie, AlbumEdit("Moon Safari", "Air", 1998, []))
 
