@@ -214,3 +214,36 @@ def test_update_album_missing_file_changes_nothing(api, library_files):
     assert _album(api, "Discovery")
     assert "album" in _tags(library_files, api.get_album_songs(album)[1])
     assert _tags(library_files, api.get_album_songs(album)[1])["album"] == "Discovery"
+
+
+# --- library-only edits ------------------------------------------------------
+
+def test_update_song_without_writing_files(api, library_files):
+    song = _song(api, "Talisman")
+    path = library_files / song.path
+    before = (path.read_bytes(), path.stat().st_mtime_ns)
+
+    assert api.update_song(song, SongEdit("Talisman (Live)", "Air", 9, None), write_file_tags=False)
+
+    assert (path.read_bytes(), path.stat().st_mtime_ns) == before
+    updated = _song(api, "Talisman (Live)")
+    assert updated.track_number == 9
+
+
+def test_update_song_without_writing_files_works_on_read_only_files(api, library_files):
+    song = _song(api, "Talisman")
+    os.chmod(library_files / song.path, 0o444)
+    api.update_song(song, SongEdit("Talisman 2", "Air", 3, None), write_file_tags=False)
+    assert _song(api, "Talisman 2")
+
+
+def test_update_album_without_writing_files(api, library_files):
+    album = _album(api, "Discovery")
+    tags_before = [_tags(library_files, s) for s in api.get_album_songs(album)]
+
+    api.update_album(album, AlbumEdit("Discovery (2001)", "Daft Punk", 2001, ["house"]), write_file_tags=False)
+
+    updated = _album(api, "Discovery (2001)")
+    assert updated.year == 2001
+    assert [g.name for g in updated.genres] == ["house"]
+    assert [_tags(library_files, s) for s in api.get_album_songs(updated)] == tags_before

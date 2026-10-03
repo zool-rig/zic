@@ -2,6 +2,7 @@ from PySide6.QtCore import QModelIndex, QStringListModel, Qt
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
+    QCheckBox,
     QCompleter,
     QDialog,
     QDialogButtonBox,
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from zic.api import ZicApi
+from zic.config import get_user_config
 from zic.utils.qt_utils import WaitCursor, style_completer_popup
 from zic.utils.tags import TagWriteError
 from zic.widgets.rules import HRule
@@ -93,6 +95,7 @@ class MetadataDialog(QDialog):
 
         # Widgets
         self.title_lbl = None
+        self.write_tags_chk = None
         self.note_lbl = None
         self.error_lbl = None
         self.button_box = None
@@ -113,6 +116,7 @@ class MetadataDialog(QDialog):
 
     def init_widgets(self) -> None:
         self.title_lbl = QLabel(self.title)
+        self.write_tags_chk = QCheckBox("Also write the changes to the audio files")
         self.note_lbl = QLabel()
         self.error_lbl = QLabel()
         self.button_box = QDialogButtonBox(
@@ -123,6 +127,7 @@ class MetadataDialog(QDialog):
         self.main_v_layout.addWidget(self.title_lbl)
         self.main_v_layout.addWidget(self.section_label("Metadata"))
         self.main_v_layout.addLayout(self.metadata_form)
+        self.main_v_layout.addWidget(self.write_tags_chk)
         self.main_v_layout.addWidget(self.note_lbl)
         self.main_v_layout.addWidget(self.section_label("Details"))
         self.main_v_layout.addLayout(self.details_form)
@@ -133,6 +138,7 @@ class MetadataDialog(QDialog):
 
     def set_connections(self) -> None:
         self.button_box.accepted.connect(self.on_save_clicked)
+        self.write_tags_chk.toggled.connect(self.update_write_tags_note)
         self.button_box.rejected.connect(self.reject)
 
     def set_default(self) -> None:
@@ -142,7 +148,8 @@ class MetadataDialog(QDialog):
         self.title_lbl.setWordWrap(True)
         self.note_lbl.setObjectName("DialogNoteLabel")
         self.note_lbl.setWordWrap(True)
-        self.note_lbl.hide()
+        self.write_tags_chk.setChecked(get_user_config().write_file_tags)
+        self.update_write_tags_note()
         self.error_lbl.setObjectName("DialogErrorLabel")
         self.error_lbl.setWordWrap(True)
         self.error_lbl.hide()
@@ -161,9 +168,27 @@ class MetadataDialog(QDialog):
             value = make_value_label(value)
         self.details_form.addRow(f"{label} :", value)
 
-    def set_note(self, text: str) -> None:
+    @property
+    def write_file_tags(self) -> bool:
+        return self.write_tags_chk.isChecked()
+
+    def files_description(self) -> str:
+        """The files an edit applies to, e.g. "the audio file"."""
+        raise NotImplementedError
+
+    def update_write_tags_note(self) -> None:
+        if self.write_file_tags:
+            text = (
+                f"Your edits will modify the tags of {self.files_description()}: "
+                "they're kept on rescans and seen by other music players."
+            )
+        else:
+            text = (
+                "Your files are left untouched: edits are saved in ZIC's library "
+                "only, and a full rescan, or any change to a file, brings back "
+                "the file's own tags."
+            )
         self.note_lbl.setText(text)
-        self.note_lbl.setVisible(bool(text))
 
     def show_error(self, message: str) -> None:
         self.error_lbl.setText(message)
@@ -178,6 +203,8 @@ class MetadataDialog(QDialog):
             self.show_error(str(e))
             return
         if saved:
+            # Remembered for the next edits.
+            get_user_config().write_file_tags = self.write_file_tags
             self.accept()
 
     def save(self) -> bool:

@@ -852,9 +852,11 @@ class ZicApi:
 
     # --- metadata edition ---------------------------------------------------
     #
-    # Files stay the source of truth: edits are written to the tags first,
-    # then to the DB the same way the ingestor would read them back, so a
-    # rescan finds the same values. Only changed fields are written.
+    # Files are the source of truth: by default, edits are written to the
+    # tags first, then to the DB the same way the ingestor would read them
+    # back, so a rescan finds the same values. Only changed fields are
+    # written. With write_file_tags=False, only the DB changes: the files'
+    # tags come back on a full rescan or when a file changes.
 
     def _sync_file_state(self, song_id: int, path: Path) -> None:
         """Records the rewritten file as already scanned, so the next
@@ -876,7 +878,9 @@ class ZicApi:
             "AND id NOT IN (SELECT artist_id FROM song_artists)"
         )
 
-    def update_song(self, song: Song, edit: SongEdit) -> bool:
+    def update_song(
+        self, song: Song, edit: SongEdit, write_file_tags: bool = True
+    ) -> bool:
         """Returns whether anything changed."""
         title = clean_name(edit.title)
         if not title:
@@ -892,7 +896,7 @@ class ZicApi:
             tags["artist"] = artist_tag
             # Without an album artist tag, the ingestor falls back on the
             # song artist to find the album: pin it so the album stays put.
-            if "albumartist" not in read_tags(path):
+            if write_file_tags and "albumartist" not in read_tags(path):
                 tags["albumartist"] = song.album.artist.name
         if edit.track_number != song.track_number:
             tags["tracknumber"] = format_number_pair(
@@ -903,8 +907,9 @@ class ZicApi:
         if not tags:
             return False
 
-        check_writable([path])
-        write_tags(path, tags)
+        if write_file_tags:
+            check_writable([path])
+            write_tags(path, tags)
 
         with self.connection:
             self.connection.execute(
@@ -922,7 +927,8 @@ class ZicApi:
             if "artist" in tags:
                 set_song_artists(self.connection, song.id, artist_credit)
                 self._delete_orphans()
-            self._sync_file_state(song.id, path)
+            if write_file_tags:
+                self._sync_file_state(song.id, path)
 
         self.invalidate_caches()
         LOGGER.info(f"Song (id: {song.id}) updated: {sorted(tags)}")
@@ -967,7 +973,9 @@ class ZicApi:
             None,
         )
 
-    def update_album(self, album: Album, edit: AlbumEdit) -> int | None:
+    def update_album(
+        self, album: Album, edit: AlbumEdit, write_file_tags: bool = True
+    ) -> int | None:
         """Applies the edit to every song of the album, hidden ones included.
         Returns the album id afterwards (None if nothing changed): giving an
         album the name and artist of another one merges it into that one, as
@@ -1000,7 +1008,8 @@ class ZicApi:
                 "SELECT id, path FROM songs WHERE album_id = ?", (album.id,)
             )
         ]
-        check_writable([path for _, path in files])
+        if write_file_tags:
+            check_writable([path for _, path in files])
         merge_target = (
             self.find_album(name, artist_name, exclude=album)
             if "album" in tags or "albumartist" in tags
@@ -1009,7 +1018,7 @@ class ZicApi:
 
         written = 0
         try:
-            for _, path in files:
+            for _, path in files if write_file_tags else []:
                 write_tags(path, tags)
                 written += 1
         except TagWriteError as e:
@@ -1069,7 +1078,7 @@ class ZicApi:
                     link_album_genre(self.connection, album_id, genre_id)
 
             self._delete_orphans()
-            for song_id, path in files:
+            for song_id, path in files if write_file_tags else []:
                 self._sync_file_state(song_id, path)
 
         self.invalidate_caches()

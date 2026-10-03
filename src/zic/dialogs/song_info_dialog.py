@@ -78,7 +78,9 @@ class SongInfoDialog(MetadataDialog):
             "Hidden songs are left out of albums, playlists and searches.\n"
             "They can be shown again from the album info."
         )
-        self.set_note("Changes are written to the tags of the audio file.")
+
+    def files_description(self) -> str:
+        return "the audio file"
 
     @staticmethod
     def with_total(spinbox: QWidget, total: int | None) -> QWidget:
@@ -102,6 +104,7 @@ class SongInfoDialog(MetadataDialog):
                 track_number=optional_value(self.track_spin),
                 disc_number=optional_value(self.disc_spin),
             ),
+            write_file_tags=self.write_file_tags,
         )
         if self.hidden_chk.isChecked() != self.song.hidden:
             self.api.set_song_hidden(self.song, self.hidden_chk.isChecked())

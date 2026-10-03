@@ -122,11 +122,10 @@ class AlbumInfoDialog(MetadataDialog):
             [g.name for g in self.api.genres()], self.genres_edt, multi_value=True
         )
         self.genres_edt.setPlaceholderText("Comma-separated, e.g. trip hop, downtempo")
-        file_count = len(self.songs) + len(self.hidden_songs)
-        self.set_note(
-            f"Changes are written to the tags of the {file_count} "
-            f"file{'s' if file_count != 1 else ''} of this album."
-        )
+
+    def files_description(self) -> str:
+        count = len(self.songs) + len(self.hidden_songs)
+        return f"the {count} file{'s' if count != 1 else ''} of this album"
 
     def show_song(self, song: Song, row: QWidget) -> None:
         self.api.set_song_hidden(song, False)
@@ -150,6 +149,7 @@ class AlbumInfoDialog(MetadataDialog):
                 year=optional_value(self.year_spin),
                 genres=self.genres_edt.text().split(","),
             ),
+            write_file_tags=self.write_file_tags,
         )
         if album_id is not None:
             self.album_id = album_id

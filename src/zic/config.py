@@ -90,6 +90,8 @@ class UserConfig:
     explorer_sort_order: int = 1
     explorer_sorting_mode: int = 1
     key_bindings: dict[str, int] = field(default_factory=default_key_bindings)
+    # Whether metadata edits are also written to the audio files' tags.
+    write_file_tags: bool = True
 
     @classmethod
     def default(cls) -> "UserConfig":
@@ -116,6 +118,7 @@ class UserConfig:
                 # Merge so actions added since the config was saved still
                 # get their default key.
                 {**default_key_bindings(), **data["key_bindings"]},
+                data.get("write_file_tags", True),
             )
         LOGGER.debug(f"User config loaded : {USER_CONFIG_PATH}")
         return config

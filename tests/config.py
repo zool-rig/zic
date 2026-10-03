@@ -109,6 +109,23 @@ def test_user_config_load_adds_new_default_key_bindings(app_paths):
     assert reloaded.key_bindings["shuffle"] == 999
 
 
+def test_user_config_write_file_tags_round_trip_and_default(app_paths):
+    import json
+
+    config = UserConfig.load()
+    assert config.write_file_tags is True
+    config.write_file_tags = False
+    config.save()
+    assert UserConfig.load().write_file_tags is False
+
+    # A config saved before the option existed.
+    _, user_config_path = app_paths
+    data = json.loads(user_config_path.read_text())
+    del data["write_file_tags"]
+    user_config_path.write_text(json.dumps(data))
+    assert UserConfig.load().write_file_tags is True
+
+
 def test_get_user_config_is_cached(app_paths):
     first = get_user_config()
     first.volume = 12
