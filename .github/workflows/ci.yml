@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# A new push cancels the run still going for the same branch or PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ruff:
+    name: Ruff (lint and format)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.2.0
+
+      # Only the dev tools: ruff doesn't need the app's dependencies.
+      - name: Install ruff
+        run: uv sync --locked --only-dev
+
+      - name: Lint
+        run: uv run --no-sync ruff check --output-format=github src tests
+
+      - name: Check formatting
+        run: uv run --no-sync ruff format --check --diff src tests
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    env:
+      # No display on the runner: Qt widgets are created offscreen.
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v7
+
+      # System libraries PySide6's widgets load, missing from the runner.
+      - name: Install Qt system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+
+      # Python is the one pinned in .python-version, installed by uv.
+      - uses: astral-sh/setup-uv@v10.2.0
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Run tests
+        run: uv run --no-sync pytest

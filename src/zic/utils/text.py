@@ -81,8 +81,7 @@ def match_rank(
         return 4, len(primary)
 
     if alternatives and all(
-        token in haystack
-        or any(alt in haystack for alt in alternatives.get(token, ()))
+        token in haystack or any(alt in haystack for alt in alternatives.get(token, ()))
         for token in tokens
     ):
         return 5, len(primary)

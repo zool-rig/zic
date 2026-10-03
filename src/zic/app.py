@@ -455,7 +455,9 @@ class ZicUI(QDialog):
         ]
         if rescan:
             args.append("--rescan")
-        self.run_database_task("Full rescan" if rescan else "Scanning for new songs", args)
+        self.run_database_task(
+            "Full rescan" if rescan else "Scanning for new songs", args
+        )
 
     def compute_genres(self) -> None:
         self.run_database_task(

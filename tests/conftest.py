@@ -39,16 +39,22 @@ def db():
 
 
 def _seed_library(conn: sqlite3.Connection) -> None:
-    conn.execute("INSERT INTO artists (id, name, normalized_name) VALUES (1, 'Air', 'air')")
+    conn.execute(
+        "INSERT INTO artists (id, name, normalized_name) VALUES (1, 'Air', 'air')"
+    )
     conn.execute(
         "INSERT INTO artists (id, name, normalized_name) VALUES (2, 'Daft Punk', 'daft punk')"
     )
 
-    conn.execute("INSERT INTO genres (id, name, position) VALUES (1, 'electronic', '[0.0, 0.0]')")
+    conn.execute(
+        "INSERT INTO genres (id, name, position) VALUES (1, 'electronic', '[0.0, 0.0]')"
+    )
     conn.execute(
         "INSERT INTO genres (id, name, position) VALUES (2, 'french touch', '[0.1, 0.05]')"
     )
-    conn.execute("INSERT INTO genres (id, name, position) VALUES (3, 'rock', '[5.0, 5.0]')")
+    conn.execute(
+        "INSERT INTO genres (id, name, position) VALUES (3, 'rock', '[5.0, 5.0]')"
+    )
 
     conn.execute(
         "INSERT INTO albums (id, name, year, raw_date, artist_id, is_compilation, normalized_name) "
@@ -70,12 +76,12 @@ def _seed_library(conn: sqlite3.Connection) -> None:
 
     songs = [
         # id, path,                          title,                artist_credit, album_id, track
-        (1, "air/moon_safari/01.mp3",        "La Femme d'Argent",  "Air",       1, 1),
-        (2, "air/moon_safari/02.mp3",        "Sexy Boy",           "Air",       1, 2),
-        (5, "air/moon_safari/03.mp3",        "Talisman",           "Air",       1, 3),
-        (3, "daft_punk/discovery/01.mp3",    "One More Time",      "Daft Punk", 2, 1),
-        (4, "daft_punk/discovery/02.mp3",    "Aerodynamic",        "Daft Punk", 2, 2),
-        (6, "air/talkie_walkie/01.mp3",      "Cherry Blossom Girl","Air",       3, 1),
+        (1, "air/moon_safari/01.mp3", "La Femme d'Argent", "Air", 1, 1),
+        (2, "air/moon_safari/02.mp3", "Sexy Boy", "Air", 1, 2),
+        (5, "air/moon_safari/03.mp3", "Talisman", "Air", 1, 3),
+        (3, "daft_punk/discovery/01.mp3", "One More Time", "Daft Punk", 2, 1),
+        (4, "daft_punk/discovery/02.mp3", "Aerodynamic", "Daft Punk", 2, 2),
+        (6, "air/talkie_walkie/01.mp3", "Cherry Blossom Girl", "Air", 3, 1),
     ]
     artist_by_album = {1: 1, 2: 2, 3: 1}
     for song_id, path, title, artist_credit, album_id, track_number in songs:

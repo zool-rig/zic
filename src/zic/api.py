@@ -768,9 +768,7 @@ class ZicApi:
             for _, _, text, _ in entries
             for word in text.split()
         }
-        known_text = "\n".join(
-            [*vocabulary, *(text for _, _, text, _ in songs)]
-        )
+        known_text = "\n".join([*vocabulary, *(text for _, _, text, _ in songs)])
         self._search_index_cache = SearchIndex(
             artists, albums, genres, songs, vocabulary, known_text
         )
@@ -829,9 +827,7 @@ class ZicApi:
             genres=best(index.genres),
             songs=self._get_songs_by_ids(best(index.songs)),
         )
-        LOGGER.debug(
-            f"Search {text!r} done in {time.perf_counter() - start_time:.3f}s"
-        )
+        LOGGER.debug(f"Search {text!r} done in {time.perf_counter() - start_time:.3f}s")
         return results
 
     def _get_songs_by_ids(self, song_ids: list[int]) -> list[Song]:

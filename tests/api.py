@@ -13,6 +13,7 @@ def _first_song(api, album_name):
 
 # --- caching -----------------------------------------------------------
 
+
 def test_albums_are_cached_until_invalidated(api):
     first = api.albums()
     second = api.albums()
@@ -42,6 +43,7 @@ def test_songs_album_exposes_all_album_genres(api):
 
 # --- get_album_songs ordering -------------------------------------------
 
+
 def test_get_album_songs_track_num_order(api):
     songs = api.get_album_songs(_album(api, "Moon Safari"))
     assert [s.track_number for s in songs] == [1, 2, 3]
@@ -51,7 +53,9 @@ def test_get_album_songs_song_id_order_wraps_around(api):
     album = _album(api, "Moon Safari")
     reference_song = next(s for s in api.get_album_songs(album) if s.track_number == 3)
 
-    ordered = api.get_album_songs(album, order_mode=AlbumSongOrder.SONG_ID, song=reference_song)
+    ordered = api.get_album_songs(
+        album, order_mode=AlbumSongOrder.SONG_ID, song=reference_song
+    )
 
     assert [s.track_number for s in ordered] == [3, 1, 2]
 
@@ -75,7 +79,14 @@ def _add_song(api, song_id, album_id, track_number, disc_number=None):
         "INSERT INTO songs (id, path, title, artist_credit, album_id, track_number, "
         "disc_number, duration, format, file_size) "
         "VALUES (?, ?, ?, 'Air', ?, ?, ?, 180.0, 'mp3', 1000)",
-        (song_id, f"extra/{song_id}.mp3", f"Song {song_id}", album_id, track_number, disc_number),
+        (
+            song_id,
+            f"extra/{song_id}.mp3",
+            f"Song {song_id}",
+            album_id,
+            track_number,
+            disc_number,
+        ),
     )
 
 
@@ -85,7 +96,9 @@ def test_get_album_songs_song_id_order_starts_at_untagged_song(api):
     _add_song(api, 101, album.id, None)
     clicked = next(s for s in api.get_album_songs(album) if s.id == 101)
 
-    ordered = api.get_album_songs(album, order_mode=AlbumSongOrder.SONG_ID, song=clicked)
+    ordered = api.get_album_songs(
+        album, order_mode=AlbumSongOrder.SONG_ID, song=clicked
+    )
 
     assert ordered[0].id == 101
     assert len(ordered) == 3
@@ -97,7 +110,9 @@ def test_get_album_songs_song_id_order_picks_the_right_disc(api):
     _add_song(api, 101, album.id, 2, disc_number=2)
     clicked = next(s for s in api.get_album_songs(album) if s.id == 100)
 
-    ordered = api.get_album_songs(album, order_mode=AlbumSongOrder.SONG_ID, song=clicked)
+    ordered = api.get_album_songs(
+        album, order_mode=AlbumSongOrder.SONG_ID, song=clicked
+    )
 
     assert [s.id for s in ordered] == [100, 101, 6]
 
@@ -117,6 +132,7 @@ def test_get_album_songs_song_id_order_requires_a_song(api):
 
 # --- discography / near genres -------------------------------------------
 
+
 def test_get_rest_discography_from_album_returns_other_albums_by_same_artist(api):
     moon_safari = _album(api, "Moon Safari")
     rest = api.get_rest_discography_from_album(moon_safari)
@@ -128,7 +144,9 @@ def test_get_rest_discography_respects_exclude_ids(api):
     moon_safari = _album(api, "Moon Safari")
     talkie_walkie_song = _first_song(api, "Talkie Walkie")
 
-    rest = api.get_rest_discography_from_album(moon_safari, exclude_ids={talkie_walkie_song.id})
+    rest = api.get_rest_discography_from_album(
+        moon_safari, exclude_ids={talkie_walkie_song.id}
+    )
     assert rest == []
 
 
@@ -159,6 +177,7 @@ def test_get_near_songs_from_album_respects_exclude_ids(api):
 
 
 # --- playlists -----------------------------------------------------------
+
 
 def test_get_album_playlist_starts_with_the_albums_own_songs(api):
     album = _album(api, "Moon Safari")
@@ -226,6 +245,7 @@ def test_random_playlist_starts_without_mood_and_picks_one_song_at_a_time(api):
 
 # --- search ----------------------------------------------------------------
 
+
 def test_search_finds_artists_albums_genres_and_songs(api):
     results = api.search("air")
     assert [a.name for a in results.artists] == ["Air"]
@@ -273,6 +293,7 @@ def test_search_index_is_rebuilt_after_invalidation(api):
 
 # --- plays / likes ---------------------------------------------------------
 
+
 def test_record_song_play_increments_play_count(api):
     song = _first_song(api, "Discovery")
     assert song.play_count == 0
@@ -290,7 +311,9 @@ def test_mark_play_skipped_sets_completed_false(api):
 
     api.mark_play_skipped(play_id)
 
-    row = api.connection.execute("SELECT completed FROM plays WHERE id = ?", (play_id,)).fetchone()
+    row = api.connection.execute(
+        "SELECT completed FROM plays WHERE id = ?", (play_id,)
+    ).fetchone()
     assert row[0] == 0
 
 
@@ -302,7 +325,8 @@ def test_sync_song_persists_like_and_play_counts(api):
     api.sync_song(song)
 
     row = api.connection.execute(
-        "SELECT like_count, play_count, last_played_at FROM songs WHERE id = ?", (song.id,)
+        "SELECT like_count, play_count, last_played_at FROM songs WHERE id = ?",
+        (song.id,),
     ).fetchone()
     assert row[0] == 3
     assert row[1] == 1
@@ -315,6 +339,7 @@ def test_get_song_artists_returns_ordered_artists(api):
 
 
 # --- metadata --------------------------------------------------------------
+
 
 def test_last_ingest_date_none_when_never_ingested(api):
     assert api.last_ingest_date() is None
@@ -332,12 +357,14 @@ def test_last_ingest_date_parses_stored_metadata(api):
 
 # --- paths -------------------------------------------------------------
 
+
 def test_get_song_path_joins_root_dir_and_relative_path(api, tmp_path):
     song = _first_song(api, "Moon Safari")
     assert api.get_song_path(song) == str(tmp_path / song.path)
 
 
 # --- deferred writes ------------------------------------------------------
+
 
 def _plays(api):
     return api.connection.execute(

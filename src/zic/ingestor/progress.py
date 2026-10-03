@@ -180,7 +180,9 @@ class IngestProgress(BaseIngestProgress):
             "full rescan" if self.rescan else "new and modified files only",
         )
         grid.add_row("Files", str(self.total))
-        return Panel(grid, title="[bold cyan]ZIC ingest", border_style="cyan", expand=False)
+        return Panel(
+            grid, title="[bold cyan]ZIC ingest", border_style="cyan", expand=False
+        )
 
     def counters(self) -> Text:
         text = Text()
@@ -193,7 +195,9 @@ class IngestProgress(BaseIngestProgress):
 
     def __rich__(self) -> RenderableType:
         """Redrawn by the Live display on every refresh."""
-        current = Text(f"→ {self.current}", style="dim", no_wrap=True, overflow="ellipsis")
+        current = Text(
+            f"→ {self.current}", style="dim", no_wrap=True, overflow="ellipsis"
+        )
         return Panel(
             Group(self.progress, self.counters(), current),
             border_style="bright_black",
@@ -212,7 +216,9 @@ class IngestProgress(BaseIngestProgress):
         rate = processed / elapsed if elapsed > 0 else 0.0
         table.add_row("", "")
         table.add_row(f"[bold]{processed}/{self.total}", "files processed")
-        table.add_row(f"[bold]{minutes:02d}:{seconds:02d}", f"elapsed ({rate:.1f} files/s)")
+        table.add_row(
+            f"[bold]{minutes:02d}:{seconds:02d}", f"elapsed ({rate:.1f} files/s)"
+        )
 
         if interrupted:
             title, style = "[bold yellow]Ingest interrupted", "yellow"

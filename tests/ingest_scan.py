@@ -36,7 +36,9 @@ def make_song(root, rel_path, artist, album, title, salt):
     path = root / rel_path
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(FRAME * (40 + salt))
-    write_tags(path, {"artist": artist, "albumartist": artist, "album": album, "title": title})
+    write_tags(
+        path, {"artist": artist, "albumartist": artist, "album": album, "title": title}
+    )
     return path
 
 
@@ -51,6 +53,7 @@ def query(db_path, sql, *params):
 
 # --- same-named albums -----------------------------------------------------
 
+
 def test_same_named_albums_of_different_artists_stay_apart(lib, db_path):
     make_song(lib, "a/gh/01.mp3", "Artist A", "Greatest Hits", "Song A", 1)
     make_song(lib, "b/gh/01.mp3", "Artist B", "Greatest Hits", "Song B", 2)
@@ -62,7 +65,10 @@ def test_same_named_albums_of_different_artists_stay_apart(lib, db_path):
         "(SELECT count(*) FROM songs WHERE album_id = albums.id) "
         "FROM albums JOIN artists ON artists.id = albums.artist_id ORDER BY artists.name",
     )
-    assert albums == [("Greatest Hits", "Artist A", 1), ("Greatest Hits", "Artist B", 1)]
+    assert albums == [
+        ("Greatest Hits", "Artist A", 1),
+        ("Greatest Hits", "Artist B", 1),
+    ]
 
 
 def test_album_name_variants_of_one_artist_are_still_merged(lib, db_path):
@@ -73,6 +79,7 @@ def test_album_name_variants_of_one_artist_are_still_merged(lib, db_path):
 
 
 # --- moved / removed files --------------------------------------------------
+
 
 def test_moved_file_keeps_its_song_and_history(lib, db_path):
     make_song(lib, "a/old/01.mp3", "Artist A", "Album", "Song", 1)
@@ -85,7 +92,9 @@ def test_moved_file_keeps_its_song_and_history(lib, db_path):
     run_ingest(lib, db_path)
 
     assert query(db_path, "SELECT id, path FROM songs") == [(song_id, "a/new/01.mp3")]
-    assert query(db_path, "SELECT count(*) FROM plays WHERE song_id = ?", song_id) == [(1,)]
+    assert query(db_path, "SELECT count(*) FROM plays WHERE song_id = ?", song_id) == [
+        (1,)
+    ]
 
 
 def test_moved_and_retagged_file_replaces_the_old_song(lib, db_path):
@@ -98,7 +107,8 @@ def test_moved_and_retagged_file_replaces_the_old_song(lib, db_path):
 
     assert query(db_path, "SELECT path FROM songs") == [("y/01.mp3",)]
     assert query(
-        db_path, "SELECT artists.name FROM albums JOIN artists ON artists.id = albums.artist_id"
+        db_path,
+        "SELECT artists.name FROM albums JOIN artists ON artists.id = albums.artist_id",
     ) == [("Artist B",)]
     # No empty album nor unused artist left behind.
     assert query(db_path, "SELECT name FROM artists") == [("Artist B",)]

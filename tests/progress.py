@@ -17,12 +17,21 @@ def _progress(tmp_path, total=3):
 def test_counts_and_summary(tmp_path):
     progress = _progress(tmp_path)
     with progress:
-        for name, status in (("a.mp3", "created"), ("b.mp3", "unchanged"), ("c.mp3", "error")):
+        for name, status in (
+            ("a.mp3", "created"),
+            ("b.mp3", "unchanged"),
+            ("c.mp3", "error"),
+        ):
             progress.start_file(tmp_path / name)
             progress.finish_file(status)
 
     assert progress.counts == {
-        "created": 1, "updated": 0, "moved": 0, "unchanged": 1, "skipped": 0, "error": 1
+        "created": 1,
+        "updated": 0,
+        "moved": 0,
+        "unchanged": 1,
+        "skipped": 0,
+        "error": 1,
     }
     assert progress.current == "c.mp3"
     output = progress.console.file.getvalue()
@@ -69,6 +78,10 @@ def test_json_progress_events(tmp_path):
     assert [e["event"] for e in events] == ["start", "file", "log", "progress", "end"]
     assert events[0]["total"] == 2
     assert events[1]["current"] == "a/b.mp3"
-    assert events[2] == {"event": "log", "level": "WARNING", "message": "Can't read : a/b.mp3"}
+    assert events[2] == {
+        "event": "log",
+        "level": "WARNING",
+        "message": "Can't read : a/b.mp3",
+    }
     assert events[3]["done"] == 1 and events[3]["counts"]["skipped"] == 1
     assert events[4]["interrupted"] is False and events[4]["total"] == 2

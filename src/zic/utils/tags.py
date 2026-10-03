@@ -49,9 +49,7 @@ def read_tags(path: Path) -> dict[str, str]:
     if audio is None or not audio.tags:
         return {}
     return {
-        key: str(values[0])
-        for key in EDITABLE_TAGS
-        if (values := audio.tags.get(key))
+        key: str(values[0]) for key in EDITABLE_TAGS if (values := audio.tags.get(key))
     }
 
 

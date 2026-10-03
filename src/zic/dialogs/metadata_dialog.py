@@ -116,7 +116,9 @@ class MetadataDialog(QDialog):
 
     def init_widgets(self) -> None:
         self.title_lbl = QLabel(self.title)
-        self.write_tags_toggle = ToggleSwitch("Also write the changes to the audio files")
+        self.write_tags_toggle = ToggleSwitch(
+            "Also write the changes to the audio files"
+        )
         self.note_lbl = QLabel()
         self.error_lbl = QLabel()
         self.button_box = QDialogButtonBox(

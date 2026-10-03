@@ -12,7 +12,9 @@ def test_fold_diacritics():
 
 
 def test_normalize_search_text_ignores_case_accents_and_punctuation():
-    assert normalize_search_text("  Beyoncé - Crazy in Love!") == "beyonce crazy in love"
+    assert (
+        normalize_search_text("  Beyoncé - Crazy in Love!") == "beyonce crazy in love"
+    )
     assert normalize_search_text("La Femme d'Argent") == "la femme d argent"
     assert normalize_search_text("snake_case") == "snake case"
 

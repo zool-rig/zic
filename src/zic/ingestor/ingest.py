@@ -993,7 +993,11 @@ def ingest(
                     )
                     # Unchanged files are the bulk of an incremental scan, and
                     # skipped ones already logged why: the counters suffice.
-                    log = LOGGER.info if status in ("created", "updated") else LOGGER.debug
+                    log = (
+                        LOGGER.info
+                        if status in ("created", "updated")
+                        else LOGGER.debug
+                    )
                     log(f"Song {status} : '{path.relative_to(root)}'")
                 except Exception as e:  # noqa BLE001
                     status = "error"
@@ -1005,7 +1009,9 @@ def ingest(
                     files_to_commit = 0
 
             if paths:
-                remove_missing_songs(conn, root, {str(p.relative_to(root)) for p in paths})
+                remove_missing_songs(
+                    conn, root, {str(p.relative_to(root)) for p in paths}
+                )
             else:
                 # Most likely an unmounted drive or a wrong folder, rather
                 # than a library emptied on purpose: keep everything.

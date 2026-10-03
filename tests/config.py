@@ -44,7 +44,9 @@ def test_get_app_config_is_cached(tmp_path, app_paths):
 
     first = get_app_config()
     # Mutate the file on disk directly; the cached singleton must not change.
-    app_config_path.write_text(f'db_path = "{tmp_path / "b.db"}"\nroot_dir = "{tmp_path}"\n')
+    app_config_path.write_text(
+        f'db_path = "{tmp_path / "b.db"}"\nroot_dir = "{tmp_path}"\n'
+    )
     second = get_app_config()
 
     assert first is second

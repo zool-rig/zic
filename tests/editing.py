@@ -23,7 +23,12 @@ def library_files(api, tmp_path):
         path = tmp_path / rel_path
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(MP3_BYTES)
-        tags = {"title": title, "artist": artist, "album": album, "tracknumber": f"{track}/3"}
+        tags = {
+            "title": title,
+            "artist": artist,
+            "album": album,
+            "tracknumber": f"{track}/3",
+        }
         if album_artist == "Daft Punk":
             tags["albumartist"] = album_artist
         write_tags(path, tags)
@@ -46,6 +51,7 @@ def _tags(root, song):
 
 # --- tags ------------------------------------------------------------------
 
+
 def test_format_number_pair():
     assert format_number_pair(3, 12) == "3/12"
     assert format_number_pair(3, None) == "3"
@@ -66,6 +72,7 @@ def test_write_tags_rejects_unknown_keys(tmp_path):
 
 
 # --- songs -----------------------------------------------------------------
+
 
 def test_update_song_writes_tags_and_db(api, library_files):
     song = _song(api, "Sexy Boy")
@@ -140,10 +147,14 @@ def test_hide_and_show_song(api, library_files):
 
 # --- albums ----------------------------------------------------------------
 
+
 def test_update_album_writes_every_file_and_db(api, library_files):
     album = _album(api, "Moon Safari")
     album_id = api.update_album(
-        album, AlbumEdit("Moon Safari (Deluxe)", "Air & Friends", 1999, ["Downtempo", "electronic"])
+        album,
+        AlbumEdit(
+            "Moon Safari (Deluxe)", "Air & Friends", 1999, ["Downtempo", "electronic"]
+        ),
     )
     assert album_id == album.id
 
@@ -172,13 +183,22 @@ def test_update_album_also_tags_hidden_songs(api, library_files):
 
 
 def test_update_album_removes_orphan_genres_and_artists(api, library_files):
-    api.update_album(_album(api, "Discovery"), AlbumEdit("Discovery", "Daft Punk", 2001, []))
-    api.update_album(_album(api, "Moon Safari"), AlbumEdit("Moon Safari", "Air", 1998, ["electronic"]))
+    api.update_album(
+        _album(api, "Discovery"), AlbumEdit("Discovery", "Daft Punk", 2001, [])
+    )
+    api.update_album(
+        _album(api, "Moon Safari"),
+        AlbumEdit("Moon Safari", "Air", 1998, ["electronic"]),
+    )
     assert "french touch" not in {g.name for g in api.genres()}
 
     # Songs still credit "Daft Punk": only the unused new artist would go.
-    api.update_album(_album(api, "Discovery"), AlbumEdit("Discovery", "Thomas", 2001, []))
-    api.update_album(_album(api, "Discovery"), AlbumEdit("Discovery", "Daft Punk", 2001, []))
+    api.update_album(
+        _album(api, "Discovery"), AlbumEdit("Discovery", "Thomas", 2001, [])
+    )
+    api.update_album(
+        _album(api, "Discovery"), AlbumEdit("Discovery", "Daft Punk", 2001, [])
+    )
     assert "Thomas" not in {a.name for a in api.artists()}
 
 
@@ -218,12 +238,15 @@ def test_update_album_missing_file_changes_nothing(api, library_files):
 
 # --- library-only edits ------------------------------------------------------
 
+
 def test_update_song_without_writing_files(api, library_files):
     song = _song(api, "Talisman")
     path = library_files / song.path
     before = (path.read_bytes(), path.stat().st_mtime_ns)
 
-    assert api.update_song(song, SongEdit("Talisman (Live)", "Air", 9, None), write_file_tags=False)
+    assert api.update_song(
+        song, SongEdit("Talisman (Live)", "Air", 9, None), write_file_tags=False
+    )
 
     assert (path.read_bytes(), path.stat().st_mtime_ns) == before
     updated = _song(api, "Talisman (Live)")
@@ -241,9 +264,15 @@ def test_update_album_without_writing_files(api, library_files):
     album = _album(api, "Discovery")
     tags_before = [_tags(library_files, s) for s in api.get_album_songs(album)]
 
-    api.update_album(album, AlbumEdit("Discovery (2001)", "Daft Punk", 2001, ["house"]), write_file_tags=False)
+    api.update_album(
+        album,
+        AlbumEdit("Discovery (2001)", "Daft Punk", 2001, ["house"]),
+        write_file_tags=False,
+    )
 
     updated = _album(api, "Discovery (2001)")
     assert updated.year == 2001
     assert [g.name for g in updated.genres] == ["house"]
-    assert [_tags(library_files, s) for s in api.get_album_songs(updated)] == tags_before
+    assert [
+        _tags(library_files, s) for s in api.get_album_songs(updated)
+    ] == tags_before

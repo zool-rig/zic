@@ -283,13 +283,15 @@ uv pip install -e .
 
 You can set the `ZIC_DEVEL=1` env var to activate the debug level of logging.
 
-### Run tests
+### Run tests and checks
+
+`uv sync` installs the development tools (pytest, ruff) along with ZIC. The same checks run on every push and pull request to `main` (see [.github/workflows/ci.yml](.github/workflows/ci.yml)):
 
 ```bash
-uv run --with pytest pytest
+uv run ruff check src tests          # lint
+uv run ruff format --check src tests # formatting (`ruff format src tests` to fix it)
+uv run pytest                        # tests
 ```
-
-Or install pytest in your virtual environment (`uv pip install pytest`) and run `pytest`.
 
 ### Database schema
 

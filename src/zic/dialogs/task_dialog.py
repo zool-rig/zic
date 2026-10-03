@@ -39,7 +39,11 @@ def format_clock(seconds: float) -> str:
     seconds = int(seconds)
     hours, rest = divmod(seconds, 3600)
     minutes, seconds = divmod(rest, 60)
-    return f"{hours}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes:02d}:{seconds:02d}"
+    return (
+        f"{hours}:{minutes:02d}:{seconds:02d}"
+        if hours
+        else f"{minutes:02d}:{seconds:02d}"
+    )
 
 
 class TaskDialog(QDialog):
@@ -197,7 +201,9 @@ class TaskDialog(QDialog):
             case "log":
                 self.append_log(event["level"], event["message"])
 
-    def on_process_finished(self, exit_code: int, exit_status: QProcess.ExitStatus) -> None:
+    def on_process_finished(
+        self, exit_code: int, exit_status: QProcess.ExitStatus
+    ) -> None:
         # Lines without a trailing newline.
         if self._stdout_buffer.strip():
             self.handle_stdout_line(self._stdout_buffer)
@@ -301,7 +307,9 @@ class TaskDialog(QDialog):
         self.counters_lbl.show()
 
     def update_timing(self) -> None:
-        elapsed = self.elapsed_timer.elapsed() / 1000 if self.elapsed_timer.isValid() else 0
+        elapsed = (
+            self.elapsed_timer.elapsed() / 1000 if self.elapsed_timer.isValid() else 0
+        )
         parts = []
         if self.total is not None:
             remaining = self.total - self.processed

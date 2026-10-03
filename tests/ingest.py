@@ -21,6 +21,7 @@ from zic.ingestor.ingest import (
 
 # --- clean_name -----------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "raw, expected",
     [
@@ -38,6 +39,7 @@ def test_clean_name(raw, expected):
 
 # --- fold_diacritics / normalize_name --------------------------------------
 
+
 def test_fold_diacritics_strips_accents():
     assert fold_diacritics("Taï Phong") == "Tai Phong"
 
@@ -48,6 +50,7 @@ def test_normalize_name_is_case_and_accent_insensitive():
 
 
 # --- placeholder resolution -------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "raw", ["Unknown", "unknown artist", "Various Artists", "Inconnu", "N/A", None, ""]
@@ -66,6 +69,7 @@ def test_resolve_album_field_placeholders(raw):
 
 
 # --- years / genres ---------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "raw, expected",
@@ -133,7 +137,12 @@ def test_split_genres_does_not_split_inside_words():
 
 @pytest.mark.parametrize(
     "token",
-    ["wishlist", "Compilation", "Best of 2015", "50 albums you must hear before you die"],
+    [
+        "wishlist",
+        "Compilation",
+        "Best of 2015",
+        "50 albums you must hear before you die",
+    ],
 )
 def test_is_denylisted_genre(token):
     assert is_denylisted_genre(token) is True
@@ -152,6 +161,7 @@ def test_genre_match_key_normalizes_separators(a, b):
 
 # --- titles / artists --------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "title, expected",
     [("The Wall", "wall"), ("Les Misérables", "misérables"), ("Rumours", "rumours")],
@@ -161,7 +171,10 @@ def test_make_sort_title_strips_leading_article(title, expected):
 
 
 def test_split_artists_handles_common_separators():
-    assert split_artists("Daft Punk & Pharrell Williams") == ["Daft Punk", "Pharrell Williams"]
+    assert split_artists("Daft Punk & Pharrell Williams") == [
+        "Daft Punk",
+        "Pharrell Williams",
+    ]
     assert split_artists("A feat. B") == ["A", "B"]
     assert split_artists("Solo Artist") == ["Solo Artist"]
 
@@ -174,6 +187,7 @@ def test_parse_number_pair():
 
 
 # --- get_or_create_* (DB-backed) --------------------------------------------
+
 
 def test_get_or_create_artist_dedupes_by_normalized_name(db):
     first_id = get_or_create_artist(db, "Air")
