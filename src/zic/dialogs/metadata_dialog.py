@@ -2,7 +2,6 @@ from PySide6.QtCore import QModelIndex, QStringListModel, Qt
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
-    QCheckBox,
     QCompleter,
     QDialog,
     QDialogButtonBox,
@@ -19,6 +18,7 @@ from zic.config import get_user_config
 from zic.utils.qt_utils import WaitCursor, style_completer_popup
 from zic.utils.tags import TagWriteError
 from zic.widgets.rules import HRule
+from zic.widgets.toggle_switch import ToggleSwitch
 
 
 class MultiValueCompleter(QCompleter):
@@ -95,7 +95,7 @@ class MetadataDialog(QDialog):
 
         # Widgets
         self.title_lbl = None
-        self.write_tags_chk = None
+        self.write_tags_toggle = None
         self.note_lbl = None
         self.error_lbl = None
         self.button_box = None
@@ -116,7 +116,7 @@ class MetadataDialog(QDialog):
 
     def init_widgets(self) -> None:
         self.title_lbl = QLabel(self.title)
-        self.write_tags_chk = QCheckBox("Also write the changes to the audio files")
+        self.write_tags_toggle = ToggleSwitch("Also write the changes to the audio files")
         self.note_lbl = QLabel()
         self.error_lbl = QLabel()
         self.button_box = QDialogButtonBox(
@@ -127,7 +127,8 @@ class MetadataDialog(QDialog):
         self.main_v_layout.addWidget(self.title_lbl)
         self.main_v_layout.addWidget(self.section_label("Metadata"))
         self.main_v_layout.addLayout(self.metadata_form)
-        self.main_v_layout.addWidget(self.write_tags_chk)
+        # Left-aligned: the switch stays next to its label, as in the forms.
+        self.main_v_layout.addWidget(self.write_tags_toggle, alignment=Qt.AlignLeft)
         self.main_v_layout.addWidget(self.note_lbl)
         self.main_v_layout.addWidget(self.section_label("Details"))
         self.main_v_layout.addLayout(self.details_form)
@@ -138,7 +139,7 @@ class MetadataDialog(QDialog):
 
     def set_connections(self) -> None:
         self.button_box.accepted.connect(self.on_save_clicked)
-        self.write_tags_chk.toggled.connect(self.update_write_tags_note)
+        self.write_tags_toggle.toggled.connect(self.update_write_tags_note)
         self.button_box.rejected.connect(self.reject)
 
     def set_default(self) -> None:
@@ -148,7 +149,7 @@ class MetadataDialog(QDialog):
         self.title_lbl.setWordWrap(True)
         self.note_lbl.setObjectName("DialogNoteLabel")
         self.note_lbl.setWordWrap(True)
-        self.write_tags_chk.setChecked(get_user_config().write_file_tags)
+        self.write_tags_toggle.set_checked(get_user_config().write_file_tags)
         self.update_write_tags_note()
         self.error_lbl.setObjectName("DialogErrorLabel")
         self.error_lbl.setWordWrap(True)
@@ -170,7 +171,7 @@ class MetadataDialog(QDialog):
 
     @property
     def write_file_tags(self) -> bool:
-        return self.write_tags_chk.isChecked()
+        return self.write_tags_toggle.is_checked()
 
     def files_description(self) -> str:
         """The files an edit applies to, e.g. "the audio file"."""

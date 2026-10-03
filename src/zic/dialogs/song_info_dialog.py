@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QLabel, QLineEdit, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QWidget
 
 from zic.api import SongEdit, ZicApi
 from zic.dialogs.metadata_dialog import (
@@ -11,6 +11,7 @@ from zic.dialogs.metadata_dialog import (
 )
 from zic.models.song import Song
 from zic.utils.formatting import format_datetime, format_duration, format_size
+from zic.widgets.toggle_switch import ToggleSwitch
 
 
 def format_audio_info(song: Song) -> str:
@@ -32,7 +33,7 @@ class SongInfoDialog(MetadataDialog):
         self.artist_edt = None
         self.track_spin = None
         self.disc_spin = None
-        self.hidden_chk = None
+        self.hidden_toggle = None
 
         super().__init__(api, song.title, parent)
 
@@ -42,7 +43,7 @@ class SongInfoDialog(MetadataDialog):
         self.artist_edt = QLineEdit(self.song.artist_credit)
         self.track_spin = make_optional_spinbox(999, self.song.track_number)
         self.disc_spin = make_optional_spinbox(99, self.song.disc_number)
-        self.hidden_chk = QCheckBox("Hide this song from the library")
+        self.hidden_toggle = ToggleSwitch("Hide this song from the library")
 
     def set_layout(self) -> None:
         super().set_layout()
@@ -54,7 +55,7 @@ class SongInfoDialog(MetadataDialog):
         self.metadata_form.addRow(
             "Disc :", self.with_total(self.disc_spin, self.song.disc_total)
         )
-        self.metadata_form.addRow("", self.hidden_chk)
+        self.metadata_form.addRow("", self.hidden_toggle)
 
         song, album = self.song, self.song.album
         path = Path(self.api.get_song_path(song))
@@ -73,8 +74,8 @@ class SongInfoDialog(MetadataDialog):
     def set_default(self) -> None:
         super().set_default()
         make_completer([a.name for a in self.api.artists()], self.artist_edt)
-        self.hidden_chk.setChecked(self.song.hidden)
-        self.hidden_chk.setToolTip(
+        self.hidden_toggle.set_checked(self.song.hidden)
+        self.hidden_toggle.setToolTip(
             "Hidden songs are left out of albums, playlists and searches.\n"
             "They can be shown again from the album info."
         )
@@ -106,7 +107,7 @@ class SongInfoDialog(MetadataDialog):
             ),
             write_file_tags=self.write_file_tags,
         )
-        if self.hidden_chk.isChecked() != self.song.hidden:
-            self.api.set_song_hidden(self.song, self.hidden_chk.isChecked())
+        if self.hidden_toggle.is_checked() != self.song.hidden:
+            self.api.set_song_hidden(self.song, self.hidden_toggle.is_checked())
             self.changed = True
         return True

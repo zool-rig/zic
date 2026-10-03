@@ -19,6 +19,7 @@ class _ToggleSwitch(QFrame):
     @checked.setter
     def checked(self, checked: bool) -> None:
         self._checked = checked
+        self.update()
         self.toggled.emit(checked)
 
     def is_checked(self) -> bool:
@@ -60,7 +61,6 @@ class _ToggleSwitch(QFrame):
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             self.toggle()
-            self.update()
             self.clicked.emit()
         return super().mousePressEvent(event)
 

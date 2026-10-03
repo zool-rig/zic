@@ -150,23 +150,6 @@ QSpinBox::hover {
     background-color: #1C2330;
 }
 
-QCheckBox::indicator {
-    width: 14px;
-    height: 14px;
-    background-color: #151B24;
-    border: 1px solid #2A3342;
-    border-radius: 4px;
-}
-
-QCheckBox::indicator:hover {
-    border-color: #35F0E0;
-}
-
-QCheckBox::indicator:checked {
-    background-color: #35F0E0;
-    border-color: #35F0E0;
-}
-
 QProgressBar {
     background-color: #151B24;
     border: 1px solid #2A3342;
