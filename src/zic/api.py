@@ -4,6 +4,7 @@ import random
 import sqlite3
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -124,6 +125,13 @@ class ZicApi:
         self._search_index_cache: SearchIndex | None = None
 
         self.mood: set[int] | None = None
+
+        # Player writes made while another process (ingest) writes the DB:
+        # replayed in order by resume_writes(). None when writes go through.
+        self._deferred_writes: list[Callable[[], None]] | None = None
+        # Temporary (negative) ids of deferred plays -> their real ids.
+        self._deferred_play_ids: dict[int, int] = {}
+        self._next_deferred_play_id: int = -1
 
     def disconnect(self) -> None:
         self.connection.close()
@@ -475,23 +483,67 @@ class ZicApi:
     def get_song_path(self, song: Song) -> str:
         return str(get_app_config().root_dir / song.path)
 
-    def record_song_play(self, song: Song) -> int:
-        song.play()
+    @property
+    def writes_suspended(self) -> bool:
+        return self._deferred_writes is not None
+
+    def suspend_writes(self) -> None:
+        """Queues the player's writes (plays, skips, likes) instead of
+        running them, while another process holds the DB write lock: they
+        would otherwise wait for it, then fail with "database is locked"."""
+        if self._deferred_writes is None:
+            self._deferred_writes = []
+            LOGGER.debug("Writes suspended")
+
+    def resume_writes(self) -> None:
+        writes, self._deferred_writes = self._deferred_writes or [], None
+        for write in writes:
+            write()
+        LOGGER.debug(f"Writes resumed, {len(writes)} deferred writes applied")
+
+    def _write(self, write: Callable[[], None]) -> None:
+        if self._deferred_writes is not None:
+            self._deferred_writes.append(write)
+        else:
+            write()
+
+    def _insert_play(self, song_id: int, played_at: str) -> int:
         cur = self.connection.execute(
             "INSERT INTO plays (song_id, played_at) VALUES (?, ?)",
-            (song.id, song.last_played_at.isoformat()),
+            (song_id, played_at),
         )
         self.connection.commit()
-        LOGGER.debug(f"Song (id: {song.id}) added to plays")
+        LOGGER.debug(f"Song (id: {song_id}) added to plays")
         return cur.lastrowid
 
+    def record_song_play(self, song: Song) -> int:
+        song.play()
+        played_at = song.last_played_at.isoformat()
+        if self._deferred_writes is None:
+            return self._insert_play(song.id, played_at)
+
+        # No real id before the insert: hand out a temporary one, mapped to
+        # the real one when the write is replayed.
+        temp_id = self._next_deferred_play_id
+        self._next_deferred_play_id -= 1
+
+        def write() -> None:
+            self._deferred_play_ids[temp_id] = self._insert_play(song.id, played_at)
+
+        self._deferred_writes.append(write)
+        return temp_id
+
     def mark_play_skipped(self, play_id: int) -> None:
-        self.connection.execute(
-            "UPDATE plays SET completed = 0 WHERE id = ?",
-            (play_id,),
-        )
-        self.connection.commit()
-        LOGGER.debug(f"Play (id: {play_id}) marked as skipped")
+        def write() -> None:
+            real_id = self._deferred_play_ids.get(play_id, play_id)
+            self.connection.execute(
+                "UPDATE plays SET completed = 0 WHERE id = ?",
+                (real_id,),
+            )
+            self.connection.commit()
+            LOGGER.debug(f"Play (id: {real_id}) marked as skipped")
+
+        self._write(write)
 
     def sync_song(self, song: Song) -> None:
         query = QueryBuilder("UPDATE songs SET ")
@@ -505,9 +557,15 @@ class ZicApi:
         )
         query.push("WHERE songs.id =")
         query.push_bind(song.id)
-        self.connection.execute(*query.build())
-        self.connection.commit()
-        LOGGER.debug(f"Song synchronized : {song}")
+        # Built now: a deferred write keeps the values of this moment.
+        statement = query.build()
+
+        def write() -> None:
+            self.connection.execute(*statement)
+            self.connection.commit()
+            LOGGER.debug(f"Song synchronized : {song}")
+
+        self._write(write)
 
     def get_album_songs(
         self,

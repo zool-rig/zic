@@ -17,7 +17,7 @@ from PIL import Image
 from secret_type.typing.types import StringLike
 
 from zic.ingestor.discogs_secret import DiscogsSecret, InvalidDiscogsSecrets
-from zic.ingestor.progress import IngestProgress
+from zic.ingestor.progress import IngestProgress, JsonIngestProgress
 from zic.logging import get_logger
 from zic.utils.text import fold_diacritics
 
@@ -892,6 +892,7 @@ def ingest(
     rescan: bool,
     discogs_key: str | None = None,
     discogs_token: str | None = None,
+    json_progress: bool = False,
 ) -> None:
     discogs_secret = DiscogsSecret.from_env()
     if discogs_key is not None:
@@ -917,7 +918,12 @@ def ingest(
         # files are processed (and logged) together.
         paths = sorted(find_audio_files(root))
 
-        with IngestProgress(root, db_path, rescan, len(paths), LOGGER) as progress:
+        progress = (
+            JsonIngestProgress(root, len(paths), LOGGER)
+            if json_progress
+            else IngestProgress(root, db_path, rescan, len(paths), LOGGER)
+        )
+        with progress:
             for path in paths:
                 progress.start_file(path)
                 files_to_commit += 1

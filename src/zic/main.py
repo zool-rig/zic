@@ -81,12 +81,19 @@ def cli(ctx: click.Context, version: bool) -> None:
     "--discogs-token",
     help="A Discogs Auth token, https://www.discogs.com/developers/#page:authentication,header:authentication-discogs-auth-flow",
 )
+@click.option(
+    "--json-progress",
+    is_flag=True,
+    hidden=True,
+    help="Report progress as JSON lines on stdout (used by the app)",
+)
 def ingest(
     folder: Path,
     db: Path | None,
     rescan: bool,
     discogs_key: str | None,
     discogs_token: str | None,
+    json_progress: bool,
 ) -> None:
     from zic.ingestor.ingest import ingest as do_ingest
 
@@ -96,6 +103,7 @@ def ingest(
         rescan,
         discogs_key=discogs_key,
         discogs_token=discogs_token,
+        json_progress=json_progress,
     )
 
 

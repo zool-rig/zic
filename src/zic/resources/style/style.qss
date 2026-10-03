@@ -167,6 +167,26 @@ QCheckBox::indicator:checked {
     border-color: #35F0E0;
 }
 
+QProgressBar {
+    background-color: #151B24;
+    border: 1px solid #2A3342;
+    border-radius: 6px;
+    color: #E6E9EE;
+    text-align: center;
+    min-height: 18px;
+}
+
+QProgressBar::chunk {
+    background-color: #1F8F86;
+    border-radius: 5px;
+}
+
+QPlainTextEdit {
+    background-color: #151B24;
+    border: 1px solid #2A3342;
+    border-radius: 8px;
+}
+
 #DialogTitleLabel {
     font-size: 15pt;
 }

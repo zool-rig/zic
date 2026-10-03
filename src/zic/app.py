@@ -1,7 +1,7 @@
 import importlib.metadata
 from collections.abc import Callable
 
-from PySide6.QtCore import QEvent, QObject, QProcess, QSize, Qt, QTimer
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer
 from PySide6.QtGui import QIcon, QKeyEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from zic.api import ZicApi
 from zic.config import get_app_config, get_user_config
+from zic.dialogs.task_dialog import TaskDialog
 from zic.models.album import Album, AlbumCover
 from zic.models.artist import Artist
 from zic.models.genre import Genre
@@ -84,9 +85,6 @@ class ZicUI(QDialog):
         self.help_menu = None
         self.about_action = None
         self.compute_genres_action = None
-
-        self.ingest_process = QProcess(self)
-        self.compute_genres_process = QProcess(self)
 
         self.init_ui()
 
@@ -209,10 +207,6 @@ class ZicUI(QDialog):
         self.player_widget.song_url_clicked.connect(self.jump_to_song)
         self.player_widget.album_url_clicked.connect(self.jump_to_album)
         self.player_widget.artist_url_clicked.connect(self.jump_to_artists)
-        self.ingest_process.finished.connect(self.on_ingest_process_finished)
-        self.ingest_process.errorOccurred.connect(self.on_ingest_process_failed)
-        self.compute_genres_process.finished.connect(self.on_compute_genres_finished)
-        self.compute_genres_process.errorOccurred.connect(self.on_compute_genres_failed)
 
     def set_default(self) -> None:
         self.setWindowFlags(Qt.Window)
@@ -457,45 +451,35 @@ class ZicUI(QDialog):
             str(get_app_config().root_dir),
             "--db",
             str(get_app_config().db_path),
+            "--json-progress",
         ]
         if rescan:
             args.append("--rescan")
-        self.ingest_process.start("zic", args)
-
-    def on_ingest_process_finished(
-        self, exit_code: int, exit_status: QProcess.ExitStatus
-    ) -> None:
-        if exit_code == 0 and exit_status == QProcess.ExitStatus.NormalExit:
-            QMessageBox.information(self, "Database", "Database scan finished")
-            self.reload()
-
-    def on_ingest_process_failed(self, error: QProcess.ProcessError) -> None:
-        QMessageBox.warning(
-            self,
-            "Database",
-            f"Database scan failed : {error.name}\n{self.ingest_process.errorString()}",
-        )
+        self.run_database_task("Full rescan" if rescan else "Scanning for new songs", args)
 
     def compute_genres(self) -> None:
-        self.compute_genres_process.start(
-            "zic", ["genres", "compute", str(get_app_config().db_path)]
+        self.run_database_task(
+            "Computing genre positions",
+            ["genres", "compute", str(get_app_config().db_path)],
         )
 
-    def on_compute_genres_finished(
-        self, exit_code: int, exit_status: QProcess.ExitStatus
-    ) -> None:
-        if exit_code == 0 and exit_status == QProcess.ExitStatus.NormalExit:
-            QMessageBox.information(
-                self, "Database", "Genre positions computation finished"
-            )
-            self.reload()
+    def run_database_task(self, title: str, args: list[str]) -> None:
+        """Runs a zic command that writes the database in another process.
+        Its dialog is modal, so the library can't be edited meanwhile, and
+        the player's writes are queued until it's done: music keeps playing
+        without fighting for the database lock."""
+        self.api.suspend_writes()
+        dialog = TaskDialog(title, "zic", args, self)
+        dialog.task_finished.connect(self.on_database_task_finished)
+        dialog.exec()
+        # Failed to start or closed early: never leave writes suspended.
+        if self.api.writes_suspended:
+            self.api.resume_writes()
 
-    def on_compute_genres_failed(self, error: QProcess.ProcessError) -> None:
-        QMessageBox.warning(
-            self,
-            "Database",
-            f"Genre position computation failed : {error.name}\n{self.compute_genres_process.errorString()}",
-        )
+    def on_database_task_finished(self, _: bool) -> None:
+        self.api.resume_writes()
+        # Even a cancelled or failed run may have committed some changes.
+        self.reload()
 
     @property
     def text_edits(self) -> list[QWidget]:

@@ -335,3 +335,51 @@ def test_last_ingest_date_parses_stored_metadata(api):
 def test_get_song_path_joins_root_dir_and_relative_path(api, tmp_path):
     song = _first_song(api, "Moon Safari")
     assert api.get_song_path(song) == str(tmp_path / song.path)
+
+
+# --- deferred writes ------------------------------------------------------
+
+def _plays(api):
+    return api.connection.execute(
+        "SELECT song_id, completed FROM plays ORDER BY id"
+    ).fetchall()
+
+
+def test_suspended_writes_are_replayed_in_order(api):
+    song = _first_song(api, "Moon Safari")
+    api.suspend_writes()
+
+    play_id = api.record_song_play(song)
+    api.mark_play_skipped(play_id)
+    song.like_count += 1
+    api.sync_song(song)
+
+    assert play_id < 0
+    assert _plays(api) == []
+    assert api.writes_suspended
+
+    api.resume_writes()
+    assert not api.writes_suspended
+    assert _plays(api) == [(song.id, 0)]
+    like_count, play_count = api.connection.execute(
+        "SELECT like_count, play_count FROM songs WHERE id = ?", (song.id,)
+    ).fetchone()
+    assert (like_count, play_count) == (1, 1)
+
+
+def test_play_recorded_while_suspended_can_be_skipped_after_resume(api):
+    # The song still plays when the scan ends: the player holds a temporary id.
+    song = _first_song(api, "Moon Safari")
+    api.suspend_writes()
+    play_id = api.record_song_play(song)
+    api.resume_writes()
+
+    api.mark_play_skipped(play_id)
+    assert _plays(api) == [(song.id, 0)]
+
+
+def test_writes_go_through_when_not_suspended(api):
+    song = _first_song(api, "Moon Safari")
+    play_id = api.record_song_play(song)
+    assert play_id > 0
+    assert _plays(api) == [(song.id, 1)]
