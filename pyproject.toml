@@ -10,7 +10,7 @@ authors = [{ name = "MF_ZOOL" }]
 keywords = [
     # Read by the About dialog through importlib.metadata (see
     # zic.utils.release.find_release_date): update it with each release.
-    "release-date:2026-09-20",
+    "release-date:2026-10-04",
     "music",
     "music-player",
     "audio",
