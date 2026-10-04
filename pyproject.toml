@@ -9,7 +9,7 @@ license-files = ["LICENSE"]
 authors = [{ name = "MF_ZOOL" }]
 keywords = [
     # Read by the About dialog through importlib.metadata (see
-    # zic.app.find_release_date): update it with each release.
+    # zic.utils.release.find_release_date): update it with each release.
     "release-date:2026-09-20",
     "music",
     "music-player",

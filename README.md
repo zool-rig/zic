@@ -1,5 +1,5 @@
 <div align=center>
-    <img src="https://raw.githubusercontent.com/zool-rig/zic/main/images/zic.png" width=128 alt=logo>
+    <img src="images/zic.png" width=128 alt=logo>
     <h1>ZIC</h1>
     <p>A local-library desktop music player with album/genre browsing and genre-aware smart playlists.</p>
 
@@ -10,7 +10,7 @@
 ![PyPI](https://img.shields.io/pypi/v/zic)
 ![Downloads](https://img.shields.io/pypi/dm/zic)
 
-![overview](https://raw.githubusercontent.com/zool-rig/zic/main/images/overview.png)
+![overview](images/overview.png)
 </div>
 
 
@@ -76,7 +76,7 @@ zic
 
 The first time you launch ZIC, a welcome dialog will ask you to register where your MP3/M4A library and your database are located.
 
-![first-launch](https://raw.githubusercontent.com/zool-rig/zic/main/images/first-launch.png)
+![first-launch](images/first-launch.png)
 
 ### Keep your library up to date
 
@@ -163,7 +163,7 @@ See how your own genres cluster together, in an interactive 2D plot opened in yo
 zic genres vis ~/Music/.db
 ```
 
-![genres-visualization](https://raw.githubusercontent.com/zool-rig/zic/main/images/genres-vis.png)
+![genres-visualization](images/genres-vis.png)
 
 >[!NOTE]
 >These visualizations are in 2D, so they are partial representations of the real space which is in 8 dimensions
@@ -285,7 +285,7 @@ You can set the `ZIC_DEVEL=1` env var to activate the debug level of logging.
 
 ### Run tests and checks
 
-`uv sync` installs the development tools (pytest, ruff) along with ZIC. The same checks run on every push and pull request to `main` (see [.github/workflows/ci.yml](https://github.com/zool-rig/zic/blob/main/.github/workflows/ci.yml)):
+`uv sync` installs the development tools (pytest, ruff) along with ZIC. The same checks run on every push and pull request to `main` (see [.github/workflows/ci.yml](.github/workflows/ci.yml)):
 
 ```bash
 uv run ruff check src tests          # lint
@@ -299,4 +299,4 @@ The database is a cache of your library, rebuilt from your files: after a change
 
 ## License
 
-See [LICENSE](https://github.com/zool-rig/zic/blob/main/LICENSE).
+See [LICENSE](LICENSE).

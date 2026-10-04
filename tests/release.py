@@ -1,6 +1,6 @@
 import pytest
 
-from zic.app import find_release_date
+from zic.utils.release import find_release_date
 
 
 @pytest.mark.parametrize(
