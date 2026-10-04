@@ -44,9 +44,9 @@ def launch_ui() -> None:
 def cli(ctx: click.Context, version: bool) -> None:
     """A local-library desktop music player with album/genre browsing and genre-aware smart playlists."""
     if version:
-        import importlib.metadata
+        from zic.utils.release import package_version
 
-        print(f"ZIC {importlib.metadata.version('zic')}")
+        print(f"ZIC {package_version()}")
         return
 
     if ctx.invoked_subcommand is None:

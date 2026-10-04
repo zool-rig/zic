@@ -1,4 +1,3 @@
-import importlib.metadata
 from collections.abc import Callable
 
 from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer
@@ -27,7 +26,7 @@ from zic.models.genre import Genre
 from zic.models.song import Song
 from zic.resources import get_resource
 from zic.utils.qt_utils import SignalsOFF, make_toolbutton, named_widget
-from zic.utils.release import find_release_date
+from zic.utils.release import find_release_date, package_metadata, package_version
 from zic.widgets.album_explorer import AlbumExplorer
 from zic.widgets.album_view import AlbumView
 from zic.widgets.artists_filter_widget import ArtistsFilterWidget
@@ -211,7 +210,7 @@ class ZicUI(QDialog):
 
     def set_default(self) -> None:
         self.setWindowFlags(Qt.Window)
-        self.setWindowTitle(f"ZIC - {importlib.metadata.version('zic')}")
+        self.setWindowTitle(f"ZIC - {package_version()}")
         self.setWindowIcon(QIcon(get_resource("icons/zic.ico")))
 
         for layout, alignment in (
@@ -420,10 +419,10 @@ class ZicUI(QDialog):
                 self.show_album(result.album, highlighted_song=result)
 
     def show_about_dialog(self) -> None:
-        meta = importlib.metadata.metadata("zic")
+        meta = package_metadata()
         release_date = find_release_date(meta.get_all("Keywords", []))
 
-        version = importlib.metadata.version("zic")
+        version = package_version()
         description = meta["summary"]
 
         about_message = f"""

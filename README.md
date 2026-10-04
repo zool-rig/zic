@@ -8,8 +8,8 @@
 ![PySide6](https://img.shields.io/badge/UI-PySide6-41cd52?logo=qt&logoColor=white)
 ![SQLite](https://img.shields.io/badge/database-SQLite-07405e?logo=sqlite&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![PyPI](https://img.shields.io/pypi/v/zic)
-![Downloads](https://img.shields.io/pypi/dm/zic)
+![PyPI](https://img.shields.io/pypi/v/zic-player)
+![Downloads](https://img.shields.io/pypi/dm/zic-player)
 
 ![overview](images/overview.png)
 </div>
@@ -52,14 +52,16 @@ uv venv zic-venv
 source zic-venv/bin/activate # Linux/macOS
 # zic-venv\Scripts\activate  # Windows
 
-uv pip install zic
+uv pip install zic-player
 ```
 
 ### Quick install
 
 ```bash
-pip install zic
+pip install zic-player
 ```
+
+The package is named `zic-player` on PyPI; the app itself is launched with `zic`.
 
 ## Getting started
 

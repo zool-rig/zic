@@ -49,7 +49,7 @@ jobs:
     # the environment to approve each release.
     environment:
       name: pypi
-      url: https://pypi.org/project/zic/
+      url: https://pypi.org/project/zic-player/
     permissions:
       id-token: write
     steps:

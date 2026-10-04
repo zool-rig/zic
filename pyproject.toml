@@ -1,5 +1,5 @@
 [project]
-name = "zic"
+name = "zic-player"
 version = "0.1.0"
 description = "A local-library desktop music player with album/genre browsing and genre-aware smart playlists."
 readme = "README.md"
