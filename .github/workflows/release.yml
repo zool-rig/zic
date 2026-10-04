@@ -72,12 +72,19 @@ jobs:
           name: dist
           path: dist/
 
-      - name: Create the release
+      # The release may already exist (created from GitHub's interface, which
+      # also creates the tag and starts this workflow, or by a previous
+      # attempt of this job): then only attach the files to it.
+      - name: Create the release, or attach the files to it
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "$GITHUB_REF_NAME" dist/*
-          --repo "$GITHUB_REPOSITORY"
-          --title "$GITHUB_REF_NAME"
-          --generate-notes
-          --verify-tag
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes \
+              --verify-tag
+          fi

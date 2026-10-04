@@ -308,6 +308,8 @@ uv run pytest                        # tests
 
 The [release workflow](.github/workflows/release.yml) then runs the CI again, checks that the tag matches the version and that the release date is today, builds the package, publishes it to PyPI (once approved in the `pypi` environment) and creates the GitHub release.
 
+Creating the release from GitHub's interface instead works too: it creates the tag, which starts the same workflow, and the files are attached to your release.
+
 ### Database schema
 
 The database is a cache of your library, rebuilt from your files: after a change to `schema.sql`, delete the database and run `zic ingest` again. Plays, likes, hidden songs and library-only edits live in the database only and are lost when it's deleted.
