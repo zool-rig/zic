@@ -3,6 +3,7 @@
     <h1>ZIC</h1>
     <p>A local-library desktop music player with album/genre browsing and genre-aware smart playlists.</p>
 
+[![CI](https://github.com/zool-rig/zic/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/zool-rig/zic/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.13%2B-blue?logo=python&logoColor=white)
 ![PySide6](https://img.shields.io/badge/UI-PySide6-41cd52?logo=qt&logoColor=white)
 ![SQLite](https://img.shields.io/badge/database-SQLite-07405e?logo=sqlite&logoColor=white)
@@ -292,6 +293,18 @@ uv run ruff check src tests          # lint
 uv run ruff format --check src tests # formatting (`ruff format src tests` to fix it)
 uv run pytest                        # tests
 ```
+
+### Releasing
+
+1. In `pyproject.toml`, bump `version` and set the `release-date:` keyword to the release day (it's shown in the About dialog), then merge to `main`.
+2. Tag the merged commit and push the tag:
+
+   ```bash
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+The [release workflow](.github/workflows/release.yml) then runs the CI again, checks that the tag matches the version and that the release date is today, builds the package, publishes it to PyPI (once approved in the `pypi` environment) and creates the GitHub release.
 
 ### Database schema
 
