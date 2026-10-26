@@ -92,6 +92,10 @@ class UserConfig:
     key_bindings: dict[str, int] = field(default_factory=default_key_bindings)
     # Whether metadata edits are also written to the audio files' tags.
     write_file_tags: bool = True
+    # Fade between songs that follow each other on their own (not on skip,
+    # not between consecutive tracks of an album).
+    crossfade: bool = False
+    crossfade_duration: int = 6  # seconds
 
     @classmethod
     def default(cls) -> "UserConfig":
@@ -119,6 +123,8 @@ class UserConfig:
                 # get their default key.
                 {**default_key_bindings(), **data["key_bindings"]},
                 data.get("write_file_tags", True),
+                data.get("crossfade", False),
+                data.get("crossfade_duration", 6),
             )
         LOGGER.debug(f"User config loaded : {USER_CONFIG_PATH}")
         return config

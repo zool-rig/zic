@@ -1,3 +1,5 @@
+import math
+
 from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QIcon
 from PySide6.QtMultimedia import QAudioOutput, QMediaDevices, QMediaPlayer
@@ -277,6 +279,11 @@ class PlaybackWidget(QWidget):
         self.time_slider.installEventFilter(self)
         self.progress_timer.setInterval(500)
 
+    def set_media_player(self, media_player: QMediaPlayer) -> None:
+        self.media_player.mediaStatusChanged.disconnect(self.on_media_status_changed)
+        self.media_player = media_player
+        self.media_player.mediaStatusChanged.connect(self.on_media_status_changed)
+
     def set_current_song(self, song: Song | None) -> None:
         self.current_song = song
         self.current_time_lbl.setText("00:00")
@@ -462,7 +469,24 @@ class VolumeSlider(QWidget):
             self.on_volume_changed(new_value)
 
 
+def is_album_continuation(song: Song, next_song: Song) -> bool:
+    """Whether next_song is the track right after song on its album, so the
+    two are meant to be heard back to back."""
+    if song.album.id != next_song.album.id or None in (
+        song.track_number,
+        next_song.track_number,
+    ):
+        return False
+
+    disc, next_disc = song.disc_number or 1, next_song.disc_number or 1
+    if next_disc == disc:
+        return next_song.track_number == song.track_number + 1
+    return next_disc == disc + 1 and next_song.track_number == 1
+
+
 class PlayerWidget(QWidget):
+    CROSSFADE_TICK = 50  # ms
+
     song_started = Signal(Song)
     song_paused = Signal(Song)
     song_finished = Signal(Song)
@@ -479,6 +503,12 @@ class PlayerWidget(QWidget):
         self.media_player: QMediaPlayer = QMediaPlayer()
         self.audio_output: QAudioOutput = QAudioOutput()
         self.media_player.setAudioOutput(self.audio_output)
+        # Crossfades play the next song on the standby player while the
+        # current one fades out, then the two swap roles.
+        self.standby_player: QMediaPlayer = QMediaPlayer()
+        self.standby_output: QAudioOutput = QAudioOutput()
+        self.standby_player.setAudioOutput(self.standby_output)
+        self.crossfade_timer: QTimer = QTimer(self)
         self.devices: QMediaDevices = QMediaDevices(self)
 
         # Layouts
@@ -517,12 +547,14 @@ class PlayerWidget(QWidget):
         self.main_h_layout.addWidget(self.volume_slider)
 
     def set_connections(self) -> None:
-        self.volume_slider.volume_changed.connect(
-            lambda v: self.audio_output.setVolume(v / 100)
-        )
-        self.volume_slider.muted.connect(self.audio_output.setMuted)
+        self.volume_slider.volume_changed.connect(self.on_volume_changed)
+        self.volume_slider.muted.connect(self.on_muted)
         self.playback_widget.song_finished.connect(self.on_song_finished)
         self.playback_widget.song_finished.connect(self.next)
+        self.playback_widget.song_paused.connect(self.stop_crossfade)
+        self.media_player.positionChanged.connect(self.on_position_changed)
+        self.standby_player.positionChanged.connect(self.on_position_changed)
+        self.crossfade_timer.timeout.connect(self.crossfade_step)
         self.playback_widget.previous_requested.connect(self.previous)
         self.playback_widget.next_requested.connect(self.next)
         self.likes_widget.song_liked.connect(self.on_current_song_liked)
@@ -546,8 +578,90 @@ class PlayerWidget(QWidget):
     def set_default(self) -> None:
         self.setSizePolicy(QSizePolicy.MinimumExpanding, QSizePolicy.Maximum)
         self.setEnabled(False)
+        self.crossfade_timer.setInterval(self.CROSSFADE_TICK)
+        for output in (self.audio_output, self.standby_output):
+            output.setVolume(get_user_config().volume / 100)
+            output.setMuted(get_user_config().muted)
+
+    def on_volume_changed(self, value: int) -> None:
+        if self.crossfade_timer.isActive():
+            self.crossfade_step()  # Applies the new volume to both fade gains
+        else:
+            self.audio_output.setVolume(value / 100)
+
+    def on_muted(self, muted: bool) -> None:
+        for output in (self.audio_output, self.standby_output):
+            output.setMuted(muted)
+
+    def on_position_changed(self, position: int) -> None:
+        if self.sender() is not self.media_player or not self.should_crossfade(
+            position
+        ):
+            return
+
+        self.start_crossfade()
+
+    def should_crossfade(self, position: int) -> bool:
+        config = get_user_config()
+        fade = config.crossfade_duration * 1000
+        duration = self.media_player.duration()
+        if (
+            not config.crossfade
+            or self.crossfade_timer.isActive()
+            or not self.playback_widget.playing
+            or self.playlist is None
+            or self.current_song is None
+            # Too short to fade without eating most of the song
+            or duration < 3 * fade
+            or duration - position > fade
+        ):
+            return False
+
+        next_song = self.playlist.peek()
+        return next_song is not None and not is_album_continuation(
+            self.current_song, next_song
+        )
+
+    def start_crossfade(self) -> None:
+        # The current song counts as listened to the end: it just finishes
+        # under the next one.
+        self.on_song_finished()
+        self.media_player, self.standby_player = (
+            self.standby_player,
+            self.media_player,
+        )
+        self.audio_output, self.standby_output = (
+            self.standby_output,
+            self.audio_output,
+        )
+        self.playback_widget.set_media_player(self.media_player)
+        self.audio_output.setVolume(0)
+        self.current_song = self.playlist.next()
+        self.play()
+        self.crossfade_timer.start()
+
+    def crossfade_step(self) -> None:
+        fade = get_user_config().crossfade_duration * 1000
+        # Driven by the incoming song's position, so the fade waits for it
+        # to actually start playing.
+        progress = min(self.media_player.position() / fade, 1.0)
+        volume = get_user_config().volume / 100
+        # Equal-power curves: the loudness stays steady through the fade.
+        self.audio_output.setVolume(volume * math.sin(progress * math.pi / 2))
+        self.standby_output.setVolume(volume * math.cos(progress * math.pi / 2))
+        if progress >= 1.0:
+            self.stop_crossfade()
+
+    def stop_crossfade(self) -> None:
+        """Ends a running crossfade right away: the outgoing song is cut
+        and the current one restored to full volume."""
+        if not self.crossfade_timer.isActive():
+            return
+
+        self.crossfade_timer.stop()
+        self.standby_player.stop()
+        self.standby_player.setSource(QUrl())
         self.audio_output.setVolume(get_user_config().volume / 100)
-        self.audio_output.setMuted(get_user_config().muted)
 
     @property
     def current_song(self) -> Song | None:
@@ -565,6 +679,7 @@ class PlayerWidget(QWidget):
         self.playback_widget.set_current_song(song)
 
     def set_playlist(self, playlist: Playlist | None) -> None:
+        self.stop_crossfade()
         self.playlist = playlist
         self.current_song = self.playlist.next()
         self.setEnabled(self.playlist is not None and self.current_song is not None)
@@ -586,6 +701,7 @@ class PlayerWidget(QWidget):
         self.current_play_id = None
 
     def next(self) -> None:
+        self.stop_crossfade()
         self.mark_current_play_skipped()
         if self.playlist is None:
             return
@@ -598,6 +714,7 @@ class PlayerWidget(QWidget):
         if self.playlist is None or not self.playlist.has_previous():
             return
 
+        self.stop_crossfade()
         self.mark_current_play_skipped()
         self.current_song = self.playlist.previous()
         if self.current_song is not None:
@@ -617,8 +734,9 @@ class PlayerWidget(QWidget):
 
     def on_audio_outputs_changed(self) -> None:
         new_default = QMediaDevices.defaultAudioOutput()
-        if new_default != self.audio_output.device():
-            self.audio_output.setDevice(new_default)
+        for output in (self.audio_output, self.standby_output):
+            if new_default != output.device():
+                output.setDevice(new_default)
 
     def toggle_play_pause(self) -> None:
         if self.current_song is None:
