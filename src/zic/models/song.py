@@ -29,6 +29,9 @@ class Song:
     added_to_library_at: datetime
     file_modified_at: datetime | None
     imported_at: datetime
+    # Transition points, in seconds: None until the audio is analyzed
+    cue_in: float | None = None
+    cue_out: float | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.path, str):

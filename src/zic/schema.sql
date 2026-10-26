@@ -2,6 +2,10 @@
 
 PRAGMA foreign_keys = ON;
 
+-- Schema version this file describes: must match len(MIGRATIONS) in
+-- zic.utils.db_utils, bump it along with every new migration.
+PRAGMA user_version = 1;
+
 CREATE TABLE artists (
     id                INTEGER PRIMARY KEY,
     name              TEXT NOT NULL,
@@ -85,6 +89,10 @@ CREATE TABLE songs (
     play_count      INTEGER NOT NULL DEFAULT 0,   -- denormalized cache, maintained by trigger from "plays"
     last_played_at  TEXT,                   -- same, NULL until first played
     hidden          INTEGER NOT NULL DEFAULT 0,   -- hidden from the library without being deleted
+
+    -- transitions, in seconds, NULL until the audio is analyzed
+    cue_in          REAL,                   -- where the sound starts, after the leading silence
+    cue_out         REAL,                   -- where the song is over: start of the trailing silence, or deep in its fade-out
 
     -- dates
     added_to_library_at   TEXT NOT NULL DEFAULT (datetime('now')),  -- first time seen in the library

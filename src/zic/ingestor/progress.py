@@ -35,6 +35,12 @@ STATUSES: dict[str, tuple[str, str]] = {
     "error": ("errors", "red"),
 }
 
+# task -> (progress label, mode label when rescanning / otherwise)
+TASKS: dict[str, tuple[str, str, str]] = {
+    "ingest": ("Ingesting", "full rescan", "new and modified files only"),
+    "analysis": ("Analyzing", "every song", "songs not analyzed yet"),
+}
+
 
 class RemainingColumn(ProgressColumn):
     """'1 234 left'."""
@@ -113,15 +119,17 @@ class IngestProgress(BaseIngestProgress):
         total: int,
         logger: logging.Logger,
         console: Console | None = None,
+        task: str = "ingest",
     ) -> None:
         super().__init__(root, total, logger)
         self.db_path: Path = db_path
         self.rescan: bool = rescan
         self.console: Console = console or Console()
+        self.task: str = task
 
         self.progress = Progress(
             SpinnerColumn(),
-            TextColumn("[bold]Ingesting"),
+            TextColumn(f"[bold]{TASKS[task][0]}"),
             BarColumn(),
             MofNCompleteColumn(),
             TaskProgressColumn(),
@@ -133,7 +141,7 @@ class IngestProgress(BaseIngestProgress):
             TimeRemainingColumn(),
             console=self.console,
         )
-        self.task_id = self.progress.add_task("ingest", total=total)
+        self.task_id = self.progress.add_task(task, total=total)
         self.live = Live(
             self, console=self.console, refresh_per_second=10, transient=True
         )
@@ -175,13 +183,11 @@ class IngestProgress(BaseIngestProgress):
         grid.add_column()
         grid.add_row("Library", str(self.root))
         grid.add_row("Database", str(self.db_path))
-        grid.add_row(
-            "Mode",
-            "full rescan" if self.rescan else "new and modified files only",
-        )
+        _, rescan_mode, mode = TASKS[self.task]
+        grid.add_row("Mode", rescan_mode if self.rescan else mode)
         grid.add_row("Files", str(self.total))
         return Panel(
-            grid, title="[bold cyan]ZIC ingest", border_style="cyan", expand=False
+            grid, title=f"[bold cyan]ZIC {self.task}", border_style="cyan", expand=False
         )
 
     def counters(self) -> Text:
@@ -220,12 +226,13 @@ class IngestProgress(BaseIngestProgress):
             f"[bold]{minutes:02d}:{seconds:02d}", f"elapsed ({rate:.1f} files/s)"
         )
 
+        task = self.task.capitalize()
         if interrupted:
-            title, style = "[bold yellow]Ingest interrupted", "yellow"
+            title, style = f"[bold yellow]{task} interrupted", "yellow"
         elif self.counts["error"]:
-            title, style = "[bold red]Ingest finished with errors", "red"
+            title, style = f"[bold red]{task} finished with errors", "red"
         else:
-            title, style = "[bold green]Ingest finished", "green"
+            title, style = f"[bold green]{task} finished", "green"
         return Panel(table, title=title, border_style=style, expand=False)
 
 

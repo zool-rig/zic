@@ -16,9 +16,11 @@ from mutagen import MutagenError, Tags
 from PIL import Image
 from secret_type.typing.types import StringLike
 
+from zic.ingestor.cues import analyze_file, store_cues
 from zic.ingestor.discogs_secret import DiscogsSecret, InvalidDiscogsSecrets
 from zic.ingestor.progress import IngestProgress, JsonIngestProgress
 from zic.logging import get_logger
+from zic.utils.db_utils import migrate_database
 from zic.utils.text import fold_diacritics
 
 SCHEMA_PATH = Path(__file__).parent.parent / "schema.sql"
@@ -155,6 +157,7 @@ def init_db(conn: sqlite3.Connection) -> None:
         "SELECT name FROM sqlite_master WHERE type='table' AND name='songs'"
     ).fetchone()
     if existing:
+        migrate_database(conn)
         return
     if not SCHEMA_PATH.exists():
         LOGGER.error(f"schema.sql not found next to the script ({SCHEMA_PATH})")
@@ -688,6 +691,21 @@ def ensure_cover_thumbnail(
 # ---------------------------------------------------------------------------
 
 
+def ensure_cues(conn: sqlite3.Connection, song_id: int, path: Path) -> None:
+    """Analyzes the song's transition cue points, unless it already has them.
+    A failure only costs the song its smart crossfade: the ingest goes on."""
+    (cue_in,) = conn.execute(
+        "SELECT cue_in FROM songs WHERE id = ?", (song_id,)
+    ).fetchone()
+    if cue_in is not None:
+        return
+
+    try:
+        store_cues(conn, song_id, analyze_file(path))
+    except Exception as e:  # noqa BLE001
+        LOGGER.warning(f"Can't analyze '{path.name}' for transitions : {e!r}")
+
+
 def ingest_file(
     conn: sqlite3.Connection,
     path: Path,
@@ -823,7 +841,11 @@ def ingest_file(
                 duration = ?, format = ?, file_size = ?,
                 bitrate = ?, sample_rate = ?, content_hash = ?,
                 sort_title = ?, extra_tags = ?, file_modified_at = ?,
-                imported_at = datetime('now')
+                imported_at = datetime('now'),
+                -- Compared with the old hash: cue points only hold for the
+                -- same audio (a moved file keeps them).
+                cue_in = CASE WHEN content_hash = ? THEN cue_in END,
+                cue_out = CASE WHEN content_hash = ? THEN cue_out END
             WHERE id = ?
             """,
             (
@@ -844,10 +866,13 @@ def ingest_file(
                 sort_title,
                 extra_tags_json,
                 file_mtime_str,
+                content_hash,
+                content_hash,
                 song_id,
             ),
         )
         set_song_artists(conn, song_id, artist_credit)
+        ensure_cues(conn, song_id, path)
         return status
     else:
         cur = conn.execute(
@@ -882,6 +907,7 @@ def ingest_file(
         )
         song_id = cur.lastrowid
         set_song_artists(conn, song_id, artist_credit)
+        ensure_cues(conn, song_id, path)
         return "created"
 
 

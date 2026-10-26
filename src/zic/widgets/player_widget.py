@@ -509,6 +509,10 @@ class PlayerWidget(QWidget):
         self.standby_output: QAudioOutput = QAudioOutput()
         self.standby_player.setAudioOutput(self.standby_output)
         self.crossfade_timer: QTimer = QTimer(self)
+        # Where the incoming song enters the crossfade (its cue_in), in ms
+        self.crossfade_start: int = 0
+        # Qt ignores seeks until the media is loaded: kept until then
+        self.pending_seek: int | None = None
         self.devices: QMediaDevices = QMediaDevices(self)
 
         # Layouts
@@ -554,6 +558,8 @@ class PlayerWidget(QWidget):
         self.playback_widget.song_paused.connect(self.stop_crossfade)
         self.media_player.positionChanged.connect(self.on_position_changed)
         self.standby_player.positionChanged.connect(self.on_position_changed)
+        self.media_player.mediaStatusChanged.connect(self.on_media_status_changed)
+        self.standby_player.mediaStatusChanged.connect(self.on_media_status_changed)
         self.crossfade_timer.timeout.connect(self.crossfade_step)
         self.playback_widget.previous_requested.connect(self.previous)
         self.playback_widget.next_requested.connect(self.next)
@@ -601,19 +607,45 @@ class PlayerWidget(QWidget):
 
         self.start_crossfade()
 
+    def on_media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
+        if (
+            self.sender() is self.media_player
+            and self.pending_seek is not None
+            and status
+            in (
+                QMediaPlayer.MediaStatus.LoadedMedia,
+                QMediaPlayer.MediaStatus.BufferedMedia,
+            )
+        ):
+            self.playback_widget.seek(self.pending_seek)
+            self.pending_seek = None
+
+    def song_end(self) -> int:
+        """Where the current song is over, in ms: its cue_out once analyzed,
+        else the end of the file."""
+        duration = self.media_player.duration()
+        cue_out = self.current_song.cue_out
+        if not cue_out:
+            return duration
+        return min(int(cue_out * 1000), duration)
+
     def should_crossfade(self, position: int) -> bool:
         config = get_user_config()
         fade = config.crossfade_duration * 1000
-        duration = self.media_player.duration()
         if (
             not config.crossfade
             or self.crossfade_timer.isActive()
             or not self.playback_widget.playing
             or self.playlist is None
             or self.current_song is None
+            or self.media_player.duration() <= 0
+        ):
+            return False
+
+        end = self.song_end()
+        if (
             # Too short to fade without eating most of the song
-            or duration < 3 * fade
-            or duration - position > fade
+            end < 3 * fade or end - position > fade
         ):
             return False
 
@@ -637,6 +669,11 @@ class PlayerWidget(QWidget):
         self.playback_widget.set_media_player(self.media_player)
         self.audio_output.setVolume(0)
         self.current_song = self.playlist.next()
+        # Straight to the sound: the leading silence would only delay it.
+        cue_in = self.current_song.cue_in
+        self.crossfade_start = int(cue_in * 1000) if cue_in else 0
+        if self.crossfade_start:
+            self.pending_seek = self.crossfade_start
         self.play()
         self.crossfade_timer.start()
 
@@ -644,7 +681,10 @@ class PlayerWidget(QWidget):
         fade = get_user_config().crossfade_duration * 1000
         # Driven by the incoming song's position, so the fade waits for it
         # to actually start playing.
-        progress = min(self.media_player.position() / fade, 1.0)
+        progress = min(
+            max((self.media_player.position() - self.crossfade_start) / fade, 0.0),
+            1.0,
+        )
         volume = get_user_config().volume / 100
         # Equal-power curves: the loudness stays steady through the fade.
         self.audio_output.setVolume(volume * math.sin(progress * math.pi / 2))
@@ -670,6 +710,7 @@ class PlayerWidget(QWidget):
     @current_song.setter
     def current_song(self, song: Song | None) -> None:
         self._current_song = song
+        self.pending_seek = None
         self.song_info_widget.set_current_song(song)
         self.likes_widget.set_like_count(song.like_count if song is not None else 0)
         if song is not None:

@@ -86,6 +86,7 @@ class ZicUI(QDialog):
         self.help_menu = None
         self.about_action = None
         self.compute_genres_action = None
+        self.analyze_action = None
         self.settings_menu = None
         self.crossfade_action = None
 
@@ -158,6 +159,11 @@ class ZicUI(QDialog):
             "Compute genre positions"
         )
         self.compute_genres_action.triggered.connect(self.compute_genres)
+        self.analyze_action = self.database_menu.addAction("Analyze transitions")
+        self.analyze_action.setToolTip(
+            "Find where the songs not analyzed yet start and end, for crossfades"
+        )
+        self.analyze_action.triggered.connect(self.analyze_transitions)
 
         self.settings_menu = self.menu_bar.addMenu("Settings")
         crossfade_toggle = ToggleSwitch(
@@ -475,6 +481,18 @@ class ZicUI(QDialog):
         self.run_database_task(
             "Computing genre positions",
             ["genres", "compute", str(get_app_config().db_path)],
+        )
+
+    def analyze_transitions(self) -> None:
+        self.run_database_task(
+            "Analyzing transitions",
+            [
+                "analyze",
+                str(get_app_config().root_dir),
+                "--db",
+                str(get_app_config().db_path),
+                "--json-progress",
+            ],
         )
 
     def run_database_task(self, title: str, args: list[str]) -> None:

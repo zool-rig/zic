@@ -22,6 +22,7 @@
 - **Genre intelligence** : genre proximity is computed from your own library's co-occurrence patterns, not a fixed taxonomy (see [Genre Intelligence](#genre-intelligence))
 - **Global search** : find artists, albums, genres and songs as you type, forgiving accents, word order and small typos
 - **Metadata editing** : fix song and album info from the app, optionally written back to your files' tags
+- **Smooth crossfades** : songs blend into each other, outro into intro, skipping silences, while albums keep their own flow (see [Crossfade](#crossfade))
 - Play local MP3/M4A music files, browse your albums, artists and genres
 - Automatic metadata enrichment and covers with the Discogs API
 - Library scans with live progress, in the terminal and in the app, that follow moved files and drop deleted ones
@@ -138,6 +139,15 @@ The info buttons of the album view open a dialog for the album or for a song, sh
 > [!IMPORTANT]
 > By default, edits are also **written to the tags of your audio files**: they're kept on rescans and seen by other music players. You can turn this off in the dialog (the choice is remembered): your files are then left untouched, but a full rescan, or any change to a file, brings back the file's own tags.
 
+## Crossfade
+
+Turn it on in **Settings > Crossfade**: when a song ends on its own, the next one fades in over its last seconds instead of starting after it.
+
+- Each song is analyzed once, at import, to find where its **sound really starts** (after a leading silence) and where it's **over** (the start of a trailing silence, or deep in its fade-out). The fade happens there, rather than over the file's last seconds, which are often silent.
+- There's **no fade between consecutive tracks of an album**, which are meant to be heard back to back, nor when you change songs yourself.
+
+Songs imported before this feature existed aren't analyzed yet: they fade over the end of their file until you run **Database > Analyze transitions** (or `zic analyze`), once. It uses every CPU core, and takes about half an hour for 7,000 songs on 4 cores.
+
 ## Genre Intelligence
 
 Most music apps treat genres as a flat, external taxonomy. ZIC does something different: it computes how *your* genres relate to each other based on how they actually co-occur across your own albums.
@@ -228,8 +238,9 @@ Options:
   --help  Show this message and exit.
 
 Commands:
-  genres  Manage genre proximity positions used to build genre-aware...
-  ingest  Ingests an audio library (mp3/m4a) into a SQLite database.
+  analyze  Analyzes where songs really start and end, for smooth crossfades.
+  genres   Manage genre proximity positions used to build genre-aware...
+  ingest   Ingests an audio library (mp3/m4a) into a SQLite database.
 
   Run the GUI : zic
 ```
@@ -251,6 +262,21 @@ Options:
   -k, --discogs-key TEXT    A Discogs Auth key
   -t, --discogs-token TEXT  A Discogs Auth token
   --help                    Show this message and exit.
+```
+
+```bash
+❯ zic analyze --help
+Usage: zic analyze [OPTIONS] FOLDER
+
+  Analyzes where songs really start and end, for smooth crossfades.
+
+Positional arguments:
+  FOLDER  Root folder of the library
+
+Options:
+  --db PATH  Path to the SQLite database, default to '$FOLDER/.db'
+  --all      Analyze every song again, not only the ones never analyzed
+  --help     Show this message and exit.
 ```
 
 ```bash
@@ -312,7 +338,12 @@ Creating the release from GitHub's interface instead works too: it creates the t
 
 ### Database schema
 
-The database is a cache of your library, rebuilt from your files: after a change to `schema.sql`, delete the database and run `zic ingest` again. Plays, likes, hidden songs and library-only edits live in the database only and are lost when it's deleted.
+Existing databases are upgraded in place when the app or a command opens them, so users never lose their plays, likes and edits. To change the schema:
+
+1. Append the SQL statements of the change to `MIGRATIONS` in [`db_utils.py`](src/zic/utils/db_utils.py) (never edit a released migration).
+2. Make the same change in [`schema.sql`](src/zic/schema.sql), which describes the latest version for fresh databases, and bump its `PRAGMA user_version` to the number of migrations.
+
+The tests check that a database created with the first released schema ([`tests/data/schema_v0.sql`](tests/data/schema_v0.sql)) and migrated ends up with the same columns as a fresh one.
 
 ## License
 

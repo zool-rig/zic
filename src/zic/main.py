@@ -107,6 +107,53 @@ def ingest(
     )
 
 
+@cli.command(
+    help="Analyzes where songs really start and end, for smooth crossfades.",
+    epilog="Exemple:\n\n  zic analyze ~/Music",
+)
+@click.argument(
+    "folder",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="Root folder of the library",
+)
+@click.option(
+    "--db",
+    type=Path,
+    default=None,
+    help="Path to the SQLite database, default to '$FOLDER/.db'",
+)
+@click.option(
+    "--all",
+    "everything",
+    is_flag=True,
+    help="Analyze every song again, not only the ones never analyzed",
+)
+@click.option(
+    "--json-progress",
+    is_flag=True,
+    hidden=True,
+    help="Report progress as JSON lines on stdout (used by the app)",
+)
+def analyze(
+    folder: Path, db: Path | None, everything: bool, json_progress: bool
+) -> None:
+    """Finds each song's cue points: where its sound starts after the leading
+    silence, and where it is over (trailing silence or deep in its fade-out).
+    Crossfades use them to blend outros into intros.
+
+    The ingest analyzes the songs it adds: run this once on a library
+    ingested before cue points existed. Uses every CPU core.
+    """
+    from zic.ingestor.cues import analyze as do_analyze
+
+    do_analyze(
+        folder,
+        db or (folder / ".db"),
+        everything=everything,
+        json_progress=json_progress,
+    )
+
+
 @cli.group(
     "genres",
     invoke_without_command=False,

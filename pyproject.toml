@@ -45,6 +45,7 @@ dependencies = [
     "plotly>=7.1.0",
     "pandas>=3.0.6",
     "rich>=15.0.0",
+    "av>=19.0.2",
 ]
 
 [project.urls]
