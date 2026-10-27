@@ -141,3 +141,36 @@ def test_empty_scan_keeps_the_library(lib, db_path):
     path.unlink()
     run_ingest(lib, db_path)
     assert query(db_path, "SELECT path FROM songs") == [("a/01.mp3",)]
+
+
+# --- transition cue points -------------------------------------------------
+
+
+def test_ingest_analyzes_new_songs(lib, db_path):
+    make_song(lib, "a/01.mp3", "Artist", "Album", "Song", 1)
+    run_ingest(lib, db_path)
+
+    ((cue_in, cue_out),) = query(db_path, "SELECT cue_in, cue_out FROM songs")
+    assert cue_in is not None
+    assert cue_out is not None
+
+
+def test_ingest_keeps_cues_of_moved_songs_only(lib, db_path, monkeypatch):
+    make_song(lib, "a/01.mp3", "Artist", "Album", "Song", 1)
+    make_song(lib, "a/02.mp3", "Artist", "Album", "Other", 2)
+    run_ingest(lib, db_path)
+
+    analyzed = []
+    monkeypatch.setattr(
+        ingest_module,
+        "analyze_file",
+        lambda path: analyzed.append(path.name) or (1.0, 2.0),
+    )
+    shutil.move(lib / "a/01.mp3", lib / "a/01-moved.mp3")
+    make_song(lib, "a/02.mp3", "Artist", "Album", "Other", 3)  # new content
+    run_ingest(lib, db_path)
+
+    assert analyzed == ["02.mp3"]
+    assert query(
+        db_path, "SELECT cue_in, cue_out FROM songs WHERE title = 'Other'"
+    ) == [(1.0, 2.0)]

@@ -52,6 +52,21 @@ class Playlist:
                 self.songs = self.fetch_songs()
         return None
 
+    def peek(self) -> Song | None:
+        """Returns the song next() will return, without moving to it. The
+        song is parked on `future`, so next() and previous() keep their
+        order."""
+        if not self.future:
+            if self.current is not None and self.songs is not None:
+                # The exclusion next() would apply if fetching switches
+                # sources: never fetch the current song again.
+                self.played_song_ids.add(self.current.id)
+            upcoming = self._advance()
+            if upcoming is None:
+                return None
+            self.future.append(upcoming)
+        return self.future[-1]
+
     def has_previous(self) -> bool:
         return bool(self.played)
 

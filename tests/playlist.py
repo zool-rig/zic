@@ -117,3 +117,35 @@ def test_playlist_does_not_double_count_song_on_source_transition():
     playlist.next()  # source A exhausted -> falls through to song 2 from B
 
     assert playlist.played.count(FakeSong(1)) == 1
+
+
+def test_playlist_peek_does_not_advance():
+    playlist = Playlist(lambda _: [FakeSong(1), FakeSong(2), FakeSong(3)])
+
+    assert playlist.next() == FakeSong(1)
+    assert playlist.peek() == FakeSong(2)
+    assert playlist.peek() == FakeSong(2)
+    assert playlist.current == FakeSong(1)
+    assert playlist.next() == FakeSong(2)
+    assert playlist.next() == FakeSong(3)
+
+
+def test_playlist_peek_keeps_previous_order():
+    playlist = Playlist(lambda _: [FakeSong(1), FakeSong(2), FakeSong(3)])
+
+    playlist.next()
+    playlist.next()
+    assert playlist.peek() == FakeSong(3)
+    assert playlist.previous() == FakeSong(1)
+    assert playlist.next() == FakeSong(2)
+    assert playlist.next() == FakeSong(3)
+
+
+def test_playlist_peek_returns_none_at_the_end():
+    playlist = Playlist(
+        lambda exclude_ids: [s for s in [FakeSong(1)] if s.id not in exclude_ids]
+    )
+
+    playlist.next()
+    assert playlist.peek() is None
+    assert playlist.next() is None

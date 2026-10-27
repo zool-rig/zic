@@ -34,6 +34,7 @@ from zic.widgets.dyn_label import DynLabel
 from zic.widgets.genres_filter_widget import GenresFilterWidget
 from zic.widgets.player_widget import PlayerWidget
 from zic.widgets.rules import HRule, VRule
+from zic.widgets.toggle_switch import ToggleSwitch
 
 
 class ZicUI(QDialog):
@@ -85,6 +86,9 @@ class ZicUI(QDialog):
         self.help_menu = None
         self.about_action = None
         self.compute_genres_action = None
+        self.analyze_action = None
+        self.settings_menu = None
+        self.crossfade_action = None
 
         self.init_ui()
 
@@ -155,6 +159,23 @@ class ZicUI(QDialog):
             "Compute genre positions"
         )
         self.compute_genres_action.triggered.connect(self.compute_genres)
+        self.analyze_action = self.database_menu.addAction("Analyze transitions")
+        self.analyze_action.setToolTip(
+            "Find where the songs not analyzed yet start and end, for crossfades"
+        )
+        self.analyze_action.triggered.connect(self.analyze_transitions)
+
+        self.settings_menu = self.menu_bar.addMenu("Settings")
+        crossfade_toggle = ToggleSwitch(
+            label="Crossfade", checked=get_user_config().crossfade
+        )
+        crossfade_toggle.setToolTip(
+            "Fade into the next song when it isn't the album's next track"
+        )
+        crossfade_toggle.toggled.connect(self.on_crossfade_toggled)
+        self.crossfade_action = QWidgetAction(self.settings_menu)
+        self.crossfade_action.setDefaultWidget(crossfade_toggle)
+        self.settings_menu.addAction(self.crossfade_action)
 
         self.help_menu = self.menu_bar.addMenu("Help")
         self.about_action = self.help_menu.addAction("About")
@@ -316,6 +337,9 @@ class ZicUI(QDialog):
         self.album_view.stop_current_playing_song_display()
         self.album_explorer.stop_current_playing_album_display()
 
+    def on_crossfade_toggled(self, checked: bool) -> None:
+        get_user_config().crossfade = checked
+
     def on_song_finished(self, _: Song) -> None:
         self.album_view.stop_current_playing_song_display()
         self.album_explorer.stop_current_playing_album_display()
@@ -457,6 +481,18 @@ class ZicUI(QDialog):
         self.run_database_task(
             "Computing genre positions",
             ["genres", "compute", str(get_app_config().db_path)],
+        )
+
+    def analyze_transitions(self) -> None:
+        self.run_database_task(
+            "Analyzing transitions",
+            [
+                "analyze",
+                str(get_app_config().root_dir),
+                "--db",
+                str(get_app_config().db_path),
+                "--json-progress",
+            ],
         )
 
     def run_database_task(self, title: str, args: list[str]) -> None:

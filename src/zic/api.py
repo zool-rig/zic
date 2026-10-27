@@ -31,7 +31,12 @@ from zic.models.artist import Artist
 from zic.models.genre import Genre
 from zic.models.playlist import Playlist
 from zic.models.song import Song
-from zic.utils.db_utils import InvalidDatabaseError, RowFactory, check_database
+from zic.utils.db_utils import (
+    InvalidDatabaseError,
+    RowFactory,
+    check_database,
+    migrate_database,
+)
 from zic.utils.query_builder import QueryBuilder
 from zic.utils.tags import (
     TagWriteError,
@@ -113,6 +118,7 @@ class ZicApi:
         if not check_database(conn):
             conn.close()
             raise InvalidDatabaseError(db_path)
+        migrate_database(conn)
         LOGGER.debug(f"Connected to database {db_path}")
         return conn
 
@@ -279,6 +285,8 @@ class ZicApi:
             "songs.added_to_library_at AS added_to_library_at, "
             "songs.file_modified_at AS file_modified_at, "
             "songs.imported_at AS imported_at, "
+            "songs.cue_in AS cue_in, "
+            "songs.cue_out AS cue_out, "
             "albums.id AS album_id, "
             "albums.name AS album_name, "
             "albums.year AS album_year, "
@@ -338,6 +346,8 @@ class ZicApi:
                     added_to_library_at=row["added_to_library_at"],
                     file_modified_at=row["file_modified_at"],
                     imported_at=row["imported_at"],
+                    cue_in=row["cue_in"],
+                    cue_out=row["cue_out"],
                 )
             )
 
