@@ -103,6 +103,8 @@ def test_migration_adds_user_playlists_with_their_cascades(db_v0):
     db_v0.execute("DELETE FROM songs WHERE id = 1")
 
     assert db_v0.execute("SELECT count(*) FROM user_playlist_songs").fetchone() == (0,)
+    db_v0.execute("DELETE FROM user_playlists")
+    assert db_v0.execute("SELECT count(*) FROM user_playlist_files").fetchone() == (0,)
 
 
 def test_migrated_database_passes_the_validity_check(db_v0):

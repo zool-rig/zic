@@ -179,18 +179,101 @@ def test_file_directly_in_playlists_folder_is_an_ordinary_song(lib, db_path):
     assert query(db_path, "SELECT count(*) FROM user_playlists") == [(0,)]
 
 
-def test_rescan_follows_the_playlist_folder(lib, db_path):
+def test_rescan_applies_what_changed_in_the_folder(lib, db_path):
     first = make_song(lib, "_playlists/Road/1.mp3", "A", "Album", "First", 1)
     make_song(lib, "_playlists/Road/2.mp3", "A", "Album", "Second", 2)
+    make_song(lib, "_playlists/Road/3.mp3", "A", "Album", "Third", 3)
     run_ingest(lib, db_path)
 
-    # Reordered, one removed, one added.
+    # One removed, one renamed, one added before the others.
     first.unlink()
-    shutil.move(lib / "_playlists/Road/2.mp3", lib / "_playlists/Road/3.mp3")
-    make_song(lib, "_playlists/Road/1.mp3", "A", "Album", "New", 3)
+    shutil.move(lib / "_playlists/Road/2.mp3", lib / "_playlists/Road/9.mp3")
+    make_song(lib, "_playlists/Road/0.mp3", "A", "Album", "New", 4)
     run_ingest(lib, db_path)
 
-    assert playlist_songs(db_path, "Road") == ["New", "Second"]
+    assert playlist_songs(db_path, "Road") == ["Second", "Third", "New"]
+
+
+def edit_playlist(db_path, sql, *params):
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute(sql, params)
+
+
+def song_id_of(db_path, title):
+    return query(db_path, "SELECT id FROM songs WHERE title = ?", title)[0][0]
+
+
+def test_rescan_keeps_what_was_edited_in_the_app(lib, db_path):
+    make_song(lib, "other/1.mp3", "A", "Album", "Elsewhere", 1)
+    make_song(lib, "_playlists/Road/1.mp3", "A", "Album", "One", 2)
+    make_song(lib, "_playlists/Road/2.mp3", "A", "Album", "Two", 3)
+    make_song(lib, "_playlists/Road/3.mp3", "A", "Album", "Three", 4)
+    run_ingest(lib, db_path)
+    playlist_id = query(db_path, "SELECT id FROM user_playlists")[0][0]
+
+    # Reversed, "Two" removed, and a song from elsewhere added first.
+    for title, position in (("One", 2), ("Three", 1)):
+        edit_playlist(
+            db_path,
+            "UPDATE user_playlist_songs SET position = ? WHERE song_id = ?",
+            position,
+            song_id_of(db_path, title),
+        )
+    edit_playlist(
+        db_path,
+        "DELETE FROM user_playlist_songs WHERE song_id = ?",
+        song_id_of(db_path, "Two"),
+    )
+    edit_playlist(
+        db_path,
+        "INSERT INTO user_playlist_songs (playlist_id, song_id, position) "
+        "VALUES (?, ?, 0)",
+        playlist_id,
+        song_id_of(db_path, "Elsewhere"),
+    )
+
+    run_ingest(lib, db_path)
+    run_ingest(lib, db_path, rescan=True)
+
+    assert playlist_songs(db_path, "Road") == ["Elsewhere", "Three", "One"]
+
+    # A new file joins the end, and a deleted one still removes its song.
+    make_song(lib, "_playlists/Road/4.mp3", "A", "Album", "Four", 5)
+    (lib / "_playlists/Road/3.mp3").unlink()
+    run_ingest(lib, db_path)
+
+    assert playlist_songs(db_path, "Road") == ["Elsewhere", "One", "Four"]
+
+
+def test_song_removed_in_the_app_comes_back_with_a_new_file(lib, db_path):
+    make_song(lib, "_playlists/Road/1.mp3", "A", "Album", "One", 1)
+    make_song(lib, "_playlists/Road/2.mp3", "A", "Album", "Two", 2)
+    run_ingest(lib, db_path)
+    edit_playlist(
+        db_path,
+        "DELETE FROM user_playlist_songs WHERE song_id = ?",
+        song_id_of(db_path, "Two"),
+    )
+
+    # Same content, new name: the file is new to this folder.
+    shutil.move(lib / "_playlists/Road/2.mp3", lib / "_playlists/Road/3.mp3")
+    run_ingest(lib, db_path)
+    assert playlist_songs(db_path, "Road") == ["One", "Two"]
+
+
+def test_file_holding_another_song_keeps_its_place(lib, db_path):
+    make_song(lib, "lib/1.mp3", "A", "Album", "Original", 1)
+    (lib / "_playlists/Road").mkdir(parents=True)
+    shutil.copy(lib / "lib/1.mp3", lib / "_playlists/Road/1.mp3")
+    make_song(lib, "_playlists/Road/2.mp3", "A", "Album", "Two", 2)
+    run_ingest(lib, db_path)
+
+    # The copy no longer matches the original, so it's a song of its own.
+    write_tags(lib / "_playlists/Road/1.mp3", {"title": "Retagged"})
+    run_ingest(lib, db_path)
+
+    assert playlist_songs(db_path, "Road") == ["Retagged", "Two"]
 
 
 def test_removed_playlist_folder_removes_the_playlist(lib, db_path):

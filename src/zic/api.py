@@ -738,6 +738,61 @@ class ZicApi:
         )
         return self._get_songs_by_ids([row[0] for row in cur.fetchall()])
 
+    def get_user_playlist_ids_of_song(self, song: Song) -> set[int]:
+        cur = self.connection.execute(
+            "SELECT playlist_id FROM user_playlist_songs WHERE song_id = ?",
+            (song.id,),
+        )
+        return {row[0] for row in cur.fetchall()}
+
+    def add_song_to_user_playlist(self, playlist: UserPlaylist, song: Song) -> None:
+        """At the end of the playlist. A song is only once in a playlist."""
+        with self.connection:
+            self.connection.execute(
+                "INSERT OR IGNORE INTO user_playlist_songs "
+                "(playlist_id, song_id, position) "
+                "SELECT ?, ?, COALESCE(MAX(position), -1) + 1 "
+                "FROM user_playlist_songs WHERE playlist_id = ?",
+                (playlist.id, song.id, playlist.id),
+            )
+
+    def remove_song_from_user_playlist(
+        self, playlist: UserPlaylist, song: Song
+    ) -> None:
+        """Only from the playlist: its file and the song itself stay."""
+        with self.connection:
+            self.connection.execute(
+                "DELETE FROM user_playlist_songs WHERE playlist_id = ? AND song_id = ?",
+                (playlist.id, song.id),
+            )
+
+    def move_song_in_user_playlist(
+        self, playlist: UserPlaylist, song: Song, offset: int
+    ) -> None:
+        """Swaps it with the song `offset` places away among those displayed:
+        hidden songs don't take a move to get past."""
+        song_ids = [s.id for s in self.get_user_playlist_songs(playlist)]
+        target = song_ids.index(song.id) + offset
+        if not 0 <= target < len(song_ids):
+            return
+        other_id = song_ids[target]
+        positions = dict(
+            self.connection.execute(
+                "SELECT song_id, position FROM user_playlist_songs "
+                "WHERE playlist_id = ? AND song_id IN (?, ?)",
+                (playlist.id, song.id, other_id),
+            ).fetchall()
+        )
+        with self.connection:
+            self.connection.executemany(
+                "UPDATE user_playlist_songs SET position = ? "
+                "WHERE playlist_id = ? AND song_id = ?",
+                (
+                    (positions[other_id], playlist.id, song.id),
+                    (positions[song.id], playlist.id, other_id),
+                ),
+            )
+
     def get_user_playlist_cover(self, playlist: UserPlaylist) -> bytes | None:
         """A mosaic of 4 covers of the playlist's albums, picked at random. The
         pick only depends on the playlist and its albums, so that its image

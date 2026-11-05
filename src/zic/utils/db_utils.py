@@ -29,7 +29,7 @@ MIGRATIONS: list[list[str]] = [
         "ALTER TABLE songs ADD COLUMN cue_in REAL",
         "ALTER TABLE songs ADD COLUMN cue_out REAL",
     ],
-    # 2: user playlists, mirroring the folders of the library's _playlists/
+    # 2: user playlists, made from the folders of the library's _playlists/
     [
         """
         CREATE TABLE user_playlists (
@@ -49,6 +49,22 @@ MIGRATIONS: list[list[str]] = [
         )
         """,
         "CREATE INDEX idx_user_playlist_songs_song_id ON user_playlist_songs(song_id)",
+    ],
+    # 3: files seen in each playlist's folder, so that scans keep what's edited
+    # in the app. Filled by the next scan, which finds their songs already there.
+    [
+        """
+        CREATE TABLE user_playlist_files (
+            playlist_id  INTEGER NOT NULL,
+            path         TEXT NOT NULL,
+            song_id      INTEGER,
+
+            PRIMARY KEY (playlist_id, path),
+            FOREIGN KEY (playlist_id) REFERENCES user_playlists(id) ON DELETE CASCADE,
+            FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE SET NULL
+        )
+        """,
+        "CREATE INDEX idx_user_playlist_files_song_id ON user_playlist_files(song_id)",
     ],
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
