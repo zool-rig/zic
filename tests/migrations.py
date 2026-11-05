@@ -5,7 +5,12 @@ from pathlib import Path
 import pytest
 
 from zic.ingestor.ingest import SCHEMA_PATH
-from zic.utils.db_utils import SCHEMA_VERSION, get_schema_version, migrate_database
+from zic.utils.db_utils import (
+    SCHEMA_VERSION,
+    check_database,
+    get_schema_version,
+    migrate_database,
+)
 
 # schema.sql as first released, before any migration
 SCHEMA_V0_PATH = Path(__file__).parent / "data" / "schema_v0.sql"
@@ -73,6 +78,38 @@ def test_migration_keeps_existing_data(db_v0):
     assert db_v0.execute("SELECT title, cue_in, cue_out FROM songs").fetchall() == [
         ("Sexy Boy", None, None)
     ]
+
+
+def test_migration_adds_user_playlists_with_their_cascades(db_v0):
+    migrate_database(db_v0)
+    db_v0.execute("PRAGMA foreign_keys = ON")
+    db_v0.execute(
+        "INSERT INTO artists (id, name, normalized_name) VALUES (1, 'Air', 'air')"
+    )
+    db_v0.execute(
+        "INSERT INTO albums (id, name, artist_id, normalized_name) "
+        "VALUES (1, 'Moon Safari', 1, 'moon safari')"
+    )
+    db_v0.execute(
+        "INSERT INTO songs (id, path, title, artist_credit, album_id, duration, "
+        "format, file_size) VALUES (1, 'a.mp3', 'Sexy Boy', 'Air', 1, 298.0, 'mp3', 1)"
+    )
+    db_v0.execute("INSERT INTO user_playlists (id, name) VALUES (1, 'Road')")
+    db_v0.execute(
+        "INSERT INTO user_playlist_songs (playlist_id, song_id, position) "
+        "VALUES (1, 1, 0)"
+    )
+
+    db_v0.execute("DELETE FROM songs WHERE id = 1")
+
+    assert db_v0.execute("SELECT count(*) FROM user_playlist_songs").fetchone() == (0,)
+
+
+def test_migrated_database_passes_the_validity_check(db_v0):
+    # An existing database is validated before being migrated.
+    assert check_database(db_v0)
+    migrate_database(db_v0)
+    assert check_database(db_v0)
 
 
 def test_migrating_twice_changes_nothing(db_v0):

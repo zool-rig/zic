@@ -4,7 +4,7 @@ PRAGMA foreign_keys = ON;
 
 -- Schema version this file describes: must match len(MIGRATIONS) in
 -- zic.utils.db_utils, bump it along with every new migration.
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;
 
 CREATE TABLE artists (
     id                INTEGER PRIMARY KEY,
@@ -141,7 +141,25 @@ CREATE TABLE IF NOT EXISTS metadata (
     value TEXT
 );
 
+-- Playlists mirroring the folders of the library's _playlists/: the ingest
+-- rewrites them from the folders, which are their source of truth.
+CREATE TABLE user_playlists (
+    id    INTEGER PRIMARY KEY,
+    name  TEXT NOT NULL UNIQUE               -- name of the folder
+);
+
+CREATE TABLE user_playlist_songs (
+    playlist_id  INTEGER NOT NULL,
+    song_id      INTEGER NOT NULL,
+    position     INTEGER NOT NULL,
+
+    PRIMARY KEY (playlist_id, song_id),
+    FOREIGN KEY (playlist_id) REFERENCES user_playlists(id) ON DELETE CASCADE,
+    FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
+);
+
 -- Useful indexes for frequent lookups/joins
+CREATE INDEX idx_user_playlist_songs_song_id ON user_playlist_songs(song_id);
 CREATE INDEX idx_songs_album_id ON songs(album_id);
 CREATE INDEX idx_albums_artist_id ON albums(artist_id);
 CREATE INDEX idx_song_artists_artist_id ON song_artists(artist_id);

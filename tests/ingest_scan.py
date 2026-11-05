@@ -143,6 +143,168 @@ def test_empty_scan_keeps_the_library(lib, db_path):
     assert query(db_path, "SELECT path FROM songs") == [("a/01.mp3",)]
 
 
+# --- user playlists --------------------------------------------------------
+
+
+def playlist_songs(db_path, name):
+    """The titles of a playlist, in its order."""
+    return [
+        title
+        for (title,) in query(
+            db_path,
+            "SELECT songs.title FROM user_playlist_songs "
+            "JOIN user_playlists ON user_playlists.id = playlist_id "
+            "JOIN songs ON songs.id = song_id "
+            "WHERE user_playlists.name = ? ORDER BY position",
+            name,
+        )
+    ]
+
+
+def test_playlist_folder_creates_a_playlist_in_natural_order(lib, db_path):
+    make_song(lib, "_playlists/Road/10.mp3", "A", "Album", "Ten", 1)
+    make_song(lib, "_playlists/Road/2.mp3", "A", "Album", "Two", 2)
+    make_song(lib, "_playlists/Road/sub/30.mp3", "A", "Album", "Sub", 3)
+    run_ingest(lib, db_path)
+
+    assert query(db_path, "SELECT name FROM user_playlists") == [("Road",)]
+    assert playlist_songs(db_path, "Road") == ["Two", "Ten", "Sub"]
+
+
+def test_file_directly_in_playlists_folder_is_an_ordinary_song(lib, db_path):
+    make_song(lib, "_playlists/loose.mp3", "A", "Album", "Loose", 1)
+    run_ingest(lib, db_path)
+
+    assert query(db_path, "SELECT title FROM songs") == [("Loose",)]
+    assert query(db_path, "SELECT count(*) FROM user_playlists") == [(0,)]
+
+
+def test_rescan_follows_the_playlist_folder(lib, db_path):
+    first = make_song(lib, "_playlists/Road/1.mp3", "A", "Album", "First", 1)
+    make_song(lib, "_playlists/Road/2.mp3", "A", "Album", "Second", 2)
+    run_ingest(lib, db_path)
+
+    # Reordered, one removed, one added.
+    first.unlink()
+    shutil.move(lib / "_playlists/Road/2.mp3", lib / "_playlists/Road/3.mp3")
+    make_song(lib, "_playlists/Road/1.mp3", "A", "Album", "New", 3)
+    run_ingest(lib, db_path)
+
+    assert playlist_songs(db_path, "Road") == ["New", "Second"]
+
+
+def test_removed_playlist_folder_removes_the_playlist(lib, db_path):
+    make_song(lib, "kept/1.mp3", "A", "Album", "Kept", 1)
+    make_song(lib, "_playlists/Road/1.mp3", "A", "Album", "Song", 2)
+    run_ingest(lib, db_path)
+
+    shutil.rmtree(lib / "_playlists/Road")
+    run_ingest(lib, db_path)
+
+    assert query(db_path, "SELECT count(*) FROM user_playlists") == [(0,)]
+    assert query(db_path, "SELECT count(*) FROM user_playlist_songs") == [(0,)]
+
+
+def test_copy_of_a_library_song_joins_the_playlist_without_a_new_song(lib, db_path):
+    # In a lowercase folder, it would sort after _playlists without ordering.
+    make_song(lib, "lib/1.mp3", "A", "Album", "Song", 1)
+    (lib / "_playlists/Road").mkdir(parents=True)
+    shutil.copy(lib / "lib/1.mp3", lib / "_playlists/Road/1.mp3")
+    run_ingest(lib, db_path)
+
+    assert query(db_path, "SELECT path FROM songs") == [("lib/1.mp3",)]
+    assert playlist_songs(db_path, "Road") == ["Song"]
+
+
+def test_copy_doesnt_read_the_file_again_at_each_scan(lib, db_path, monkeypatch):
+    make_song(lib, "lib/1.mp3", "A", "Album", "Song", 1)
+    (lib / "_playlists/Road").mkdir(parents=True)
+    shutil.copy(lib / "lib/1.mp3", lib / "_playlists/Road/1.mp3")
+    run_ingest(lib, db_path)
+
+    read = []
+    real_read_metadata = ingest_module.read_metadata
+    monkeypatch.setattr(
+        ingest_module,
+        "read_metadata",
+        lambda path: (read.append(path), real_read_metadata(path))[1],
+    )
+    run_ingest(lib, db_path)
+
+    assert read == []
+    assert playlist_songs(db_path, "Road") == ["Song"]
+
+
+def test_deleted_original_makes_the_playlist_copy_take_over(lib, db_path):
+    original = make_song(lib, "lib/1.mp3", "A", "Album", "Song", 1)
+    (lib / "_playlists/Road").mkdir(parents=True)
+    shutil.copy(original, lib / "_playlists/Road/1.mp3")
+    run_ingest(lib, db_path)
+    (song_id,) = query(db_path, "SELECT id FROM songs")[0]
+
+    original.unlink()
+    run_ingest(lib, db_path)
+
+    assert query(db_path, "SELECT id, path FROM songs") == [
+        (song_id, "_playlists/Road/1.mp3")
+    ]
+    assert playlist_songs(db_path, "Road") == ["Song"]
+
+
+def test_same_song_in_two_playlists_and_twice_in_one(lib, db_path):
+    make_song(lib, "_playlists/One/1.mp3", "A", "Album", "Song", 1)
+    (lib / "_playlists/Two").mkdir()
+    shutil.copy(lib / "_playlists/One/1.mp3", lib / "_playlists/One/2.mp3")
+    shutil.copy(lib / "_playlists/One/1.mp3", lib / "_playlists/Two/1.mp3")
+    run_ingest(lib, db_path)
+
+    assert query(db_path, "SELECT count(*) FROM songs") == [(1,)]
+    assert playlist_songs(db_path, "One") == ["Song"]
+    assert playlist_songs(db_path, "Two") == ["Song"]
+
+
+def test_song_only_in_a_playlist_gets_its_album(lib, db_path):
+    make_song(lib, "_playlists/Road/1.mp3", "A", "Only Here", "Song", 1)
+    run_ingest(lib, db_path)
+
+    assert query(db_path, "SELECT name FROM albums") == [("Only Here",)]
+
+
+def test_failed_file_leaves_its_playlist_untouched(lib, db_path, monkeypatch):
+    make_song(lib, "_playlists/Road/1.mp3", "A", "Album", "One", 1)
+    make_song(lib, "_playlists/Road/2.mp3", "A", "Album", "Two", 2)
+    make_song(lib, "_playlists/Other/1.mp3", "A", "Album", "Other", 3)
+    run_ingest(lib, db_path)
+
+    make_song(lib, "_playlists/Road/3.mp3", "A", "Album", "Three", 4)
+    make_song(lib, "_playlists/Other/2.mp3", "A", "Album", "Other 2", 5)
+    real_ingest_file = ingest_module.ingest_file
+
+    def failing_ingest_file(conn, path, *args):
+        if path.name == "3.mp3":
+            raise OSError("Input/output error")
+        return real_ingest_file(conn, path, *args)
+
+    monkeypatch.setattr(ingest_module, "ingest_file", failing_ingest_file)
+    run_ingest(lib, db_path)
+
+    assert playlist_songs(db_path, "Road") == ["One", "Two"]
+    assert playlist_songs(db_path, "Other") == ["Other", "Other 2"]
+
+    monkeypatch.setattr(ingest_module, "ingest_file", real_ingest_file)
+    run_ingest(lib, db_path)
+    assert playlist_songs(db_path, "Road") == ["One", "Two", "Three"]
+
+
+def test_empty_scan_keeps_the_playlists(lib, db_path):
+    path = make_song(lib, "_playlists/Road/1.mp3", "A", "Album", "Song", 1)
+    run_ingest(lib, db_path)
+    path.unlink()
+    run_ingest(lib, db_path)
+
+    assert playlist_songs(db_path, "Road") == ["Song"]
+
+
 # --- transition cue points -------------------------------------------------
 
 
