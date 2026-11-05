@@ -388,6 +388,74 @@ def test_empty_scan_keeps_the_playlists(lib, db_path):
     assert playlist_songs(db_path, "Road") == ["Song"]
 
 
+def test_playlist_made_in_the_app_survives_scans(lib, db_path):
+    make_song(lib, "a/1.mp3", "A", "Album", "Song", 1)
+    run_ingest(lib, db_path)
+    edit_playlist(db_path, "INSERT INTO user_playlists (name) VALUES ('Mine')")
+    edit_playlist(
+        db_path,
+        "INSERT INTO user_playlist_songs (playlist_id, song_id, position) "
+        "SELECT user_playlists.id, ?, 0 FROM user_playlists",
+        song_id_of(db_path, "Song"),
+    )
+
+    run_ingest(lib, db_path)
+
+    assert playlist_songs(db_path, "Mine") == ["Song"]
+
+
+def test_renamed_playlist_stays_linked_to_its_folder(lib, db_path):
+    make_song(lib, "_playlists/Road/1.mp3", "A", "Album", "One", 1)
+    run_ingest(lib, db_path)
+    edit_playlist(db_path, "UPDATE user_playlists SET name = 'Trip'")
+
+    make_song(lib, "_playlists/Road/2.mp3", "A", "Album", "Two", 2)
+    run_ingest(lib, db_path)
+
+    assert query(db_path, "SELECT name, folder FROM user_playlists") == [
+        ("Trip", "Road")
+    ]
+    assert playlist_songs(db_path, "Trip") == ["One", "Two"]
+
+
+def test_folder_named_like_another_playlist_gets_its_own(lib, db_path):
+    make_song(lib, "a/1.mp3", "A", "Album", "Song", 1)
+    run_ingest(lib, db_path)
+    edit_playlist(db_path, "INSERT INTO user_playlists (name) VALUES ('road')")
+
+    make_song(lib, "_playlists/Road/1.mp3", "A", "Album", "One", 2)
+    run_ingest(lib, db_path)
+
+    assert playlist_songs(db_path, "Road (2)") == ["One"]
+    assert playlist_songs(db_path, "road") == []
+
+
+def test_deleted_playlist_stays_deleted_until_its_folder_is_gone(lib, db_path):
+    make_song(lib, "_playlists/Road/1.mp3", "A", "Album", "One", 1)
+    make_song(lib, "kept/1.mp3", "A", "Album", "Kept", 2)
+    run_ingest(lib, db_path)
+
+    edit_playlist(
+        db_path, "INSERT INTO user_playlist_ignored_folders (folder) VALUES ('Road')"
+    )
+    edit_playlist(db_path, "DELETE FROM user_playlists")
+    run_ingest(lib, db_path)
+
+    assert query(db_path, "SELECT count(*) FROM user_playlists") == [(0,)]
+    # Its song stays in the library.
+    assert song_id_of(db_path, "One")
+
+    # Gone, then back: that's a new folder.
+    shutil.move(lib / "_playlists/Road", lib / "_playlists_backup")
+    run_ingest(lib, db_path)
+    assert query(db_path, "SELECT count(*) FROM user_playlist_ignored_folders") == [
+        (0,)
+    ]
+    shutil.move(lib / "_playlists_backup", lib / "_playlists/Road")
+    run_ingest(lib, db_path)
+    assert playlist_songs(db_path, "Road") == ["One"]
+
+
 # --- transition cue points -------------------------------------------------
 
 

@@ -134,15 +134,16 @@ my-library/
     └── Workout/...
 ```
 
-Scan your library, then open them with the playlists button of the side bar.
+Scan your library, then open them with the playlists button of the side bar. You can also create playlists right there, without any folder.
 
-- **In the app** : reorder or remove the songs of a playlist from its songs view, and add any song with the `+` button of its row. This never touches your files: a removed song stays in your library, and an added one isn't copied in the folder.
+- **In the app** : create, rename or delete a playlist, reorder or remove its songs from its songs view, and add any song with the `+` button of its row (which can also create a playlist). This never touches your files: a removed song stays in your library, an added one isn't copied in the folder, and renaming a playlist doesn't rename its folder.
+- **Deleting a playlist** keeps its songs, its folder and its files. As long as the folder is there, scans don't make the playlist come back: to get it back, rename the folder.
 - **In the folder** : scans only apply what changed since the last one, and keep your edits in the app. A new file joins the end of the playlist, a deleted file removes its song, and a song you removed in the app stays out as long as its file doesn't change location.
 - **Order** : when a playlist is created, by file name, numbers sorted by value (`2.mp3` before `10.mp3`). After that, renaming files doesn't reorder it. Subfolders are part of their playlist.
 - **Copies** : a file identical to a song of your library is that song, with its plays and likes, and isn't listed twice. If the original is deleted, the copy takes over.
 - **Songs only in a playlist** are songs like any other: their albums show up among your albums.
 - **At the end of a playlist**, the music goes on with [near genres, then a random selection](#smart-playlists).
-- **Renaming or deleting a folder** removes the playlist with its edits in the app. A renamed folder comes back as a new playlist, in file name order.
+- **Renaming or deleting a folder** removes its playlist with its edits in the app. A renamed folder comes back as a new playlist, in file name order.
 
 > [!NOTE]
 > Copies are recognized by their whole content, tags included. A copy with different tags, including after editing the original's tags, is a separate song, whose album may show up twice.

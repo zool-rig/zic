@@ -13,6 +13,11 @@ from PySide6.QtWidgets import (
 
 from zic.api import ZicApi
 from zic.dialogs.song_info_dialog import SongInfoDialog
+from zic.dialogs.user_playlist_dialogs import (
+    confirm_deletion,
+    create_playlist,
+    rename_playlist,
+)
 from zic.ingestor.ingest import PLAYLISTS_DIR
 from zic.models.song import Song
 from zic.models.user_playlist import UserPlaylist
@@ -86,12 +91,15 @@ class UserPlaylistsWidget(QWidget):
 
         # Layouts
         self.main_v_layout = None
+        self.header_h_layout = None
         self.details_v_layout = None
         self.top_h_layout = None
         self.buttons_h_layout = None
         self.songs_v_layout = None
 
         # Widgets
+        self.header_lbl = None
+        self.new_btn = None
         self.empty_lbl = None
         self.splitter = None
         self.list_widget = None
@@ -102,6 +110,8 @@ class UserPlaylistsWidget(QWidget):
         self.songs_info_lbl = None
         self.play_btn = None
         self.play_random_btn = None
+        self.rename_btn = None
+        self.delete_btn = None
         self.scroll_area = None
         self.scroll_area_widget = None
 
@@ -116,14 +126,17 @@ class UserPlaylistsWidget(QWidget):
 
     def init_layouts(self) -> None:
         self.main_v_layout = QVBoxLayout(self)
+        self.header_h_layout = QHBoxLayout()
         self.details_v_layout = QVBoxLayout()
         self.top_h_layout = QHBoxLayout()
         self.buttons_h_layout = QHBoxLayout()
         self.songs_v_layout = QVBoxLayout()
 
     def init_widgets(self) -> None:
+        self.header_lbl = QLabel("Playlists")
+        self.new_btn = make_toolbutton("icons/plus.png", tooltip="New playlist")
         self.empty_lbl = QLabel(
-            "No playlist yet. Put songs in a folder of "
+            "No playlist yet. Create one, or put songs in a folder of "
             f"{PLAYLISTS_DIR}/ at the root of your library, then check for new "
             "songs: each folder becomes a playlist."
         )
@@ -138,11 +151,17 @@ class UserPlaylistsWidget(QWidget):
         self.play_random_btn = make_toolbutton(
             "icons/shuffle.png", tooltip="Play random"
         )
+        self.rename_btn = make_toolbutton("icons/edit.png", tooltip="Rename")
+        self.delete_btn = make_toolbutton("icons/trash.png", tooltip="Delete")
         self.scroll_area = QScrollArea()
         self.scroll_area_widget = QWidget()
 
     def set_layout(self) -> None:
-        self.main_v_layout.addWidget(self.empty_lbl)
+        self.main_v_layout.addLayout(self.header_h_layout)
+        self.header_h_layout.addWidget(self.header_lbl)
+        self.header_h_layout.addWidget(self.new_btn)
+        self.header_h_layout.addStretch()
+        self.main_v_layout.addWidget(self.empty_lbl, 1)
         self.main_v_layout.addWidget(self.splitter)
         self.splitter.addWidget(self.list_widget)
         self.splitter.addWidget(self.details_widget)
@@ -155,6 +174,8 @@ class UserPlaylistsWidget(QWidget):
         self.details_v_layout.addLayout(self.buttons_h_layout)
         self.buttons_h_layout.addWidget(self.play_btn)
         self.buttons_h_layout.addWidget(self.play_random_btn)
+        self.buttons_h_layout.addWidget(self.rename_btn)
+        self.buttons_h_layout.addWidget(self.delete_btn)
         self.details_v_layout.addWidget(self.scroll_area)
         self.scroll_area.setWidget(self.scroll_area_widget)
         self.scroll_area_widget.setLayout(self.songs_v_layout)
@@ -162,6 +183,9 @@ class UserPlaylistsWidget(QWidget):
     def set_connections(self) -> None:
         self.list_widget.currentItemChanged.connect(self.on_current_item_changed)
         self.close_btn.clicked.connect(self.close_details)
+        self.new_btn.clicked.connect(self.create_playlist)
+        self.rename_btn.clicked.connect(self.rename_playlist)
+        self.delete_btn.clicked.connect(self.delete_playlist)
         self.play_btn.clicked.connect(
             lambda: self.play_playlist_requested.emit(self.playlist)
         )
@@ -177,6 +201,7 @@ class UserPlaylistsWidget(QWidget):
         self.title_lbl.setAlignment(Qt.AlignCenter)
         self.songs_info_lbl.setAlignment(Qt.AlignCenter)
         set_label_font_size(self.title_lbl, 12)
+        set_label_font_size(self.header_lbl, 12)
         self.empty_lbl.setAlignment(Qt.AlignCenter)
         self.empty_lbl.setWordWrap(True)
         self.scroll_area.setWidgetResizable(True)
@@ -205,6 +230,27 @@ class UserPlaylistsWidget(QWidget):
         self.splitter.setVisible(bool(playlists))
         if self.playlist is None:
             self.show_playlist(None)
+
+    def create_playlist(self) -> None:
+        playlist = create_playlist(self.api, self)
+        if playlist is not None:
+            self.fill()
+            self.select_playlist(playlist.id)
+
+    def rename_playlist(self) -> None:
+        if rename_playlist(self.api, self.playlist, self) is not None:
+            self.fill()
+
+    def delete_playlist(self) -> None:
+        if confirm_deletion(self, self.playlist):
+            self.api.delete_user_playlist(self.playlist)
+            self.fill()
+
+    def select_playlist(self, playlist_id: int) -> None:
+        for row in range(self.list_widget.count()):
+            item = self.list_widget.item(row)
+            if item.data(Qt.UserRole).id == playlist_id:
+                self.list_widget.setCurrentItem(item)
 
     def set_item_playlist(self, item: QListWidgetItem, playlist: UserPlaylist) -> None:
         item.setData(Qt.UserRole, playlist)
@@ -280,6 +326,9 @@ class UserPlaylistsWidget(QWidget):
             item = self.list_widget.item(row)
             if item.data(Qt.UserRole).id == playlist_id:
                 self.set_item_playlist(item, playlist)
+                return
+        # Just created, from the menu of a song.
+        self.fill()
 
     def update_details_header(self) -> None:
         self.cover_thumbnail.bytes = (

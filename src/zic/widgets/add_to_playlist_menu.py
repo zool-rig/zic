@@ -2,7 +2,7 @@ from PySide6.QtGui import QAction, QCursor
 from PySide6.QtWidgets import QMenu, QWidget
 
 from zic.api import ZicApi
-from zic.ingestor.ingest import PLAYLISTS_DIR
+from zic.dialogs.user_playlist_dialogs import create_playlist
 from zic.models.song import Song
 from zic.models.user_playlist import UserPlaylist
 
@@ -18,10 +18,10 @@ def build_add_to_playlist_menu(
         action = menu.addAction(playlist.name)
         action.setData(playlist)
         action.setEnabled(playlist.id not in playlist_ids)
-    if not playlists:
-        menu.addAction(f"No playlist yet: add a folder in {PLAYLISTS_DIR}/").setEnabled(
-            False
-        )
+    if playlists:
+        menu.addSeparator()
+    # No playlist as its data: that's how it's told apart from the others.
+    menu.addAction("New playlist...")
     return menu
 
 
@@ -35,9 +35,12 @@ def show_add_to_playlist_menu(
     """Returns the playlist the song was added to, if one was chosen."""
     menu = build_add_to_playlist_menu(api, song, parent)
     action = choose_action(menu)
-    playlist = action.data() if action is not None else None
+    chosen = action is not None
+    playlist = action.data() if chosen else None
     # Its parent would otherwise keep it, one more at each opening.
     menu.deleteLater()
+    if chosen and playlist is None:
+        playlist = create_playlist(api, parent)
     if playlist is not None:
         api.add_song_to_user_playlist(playlist, song)
     return playlist

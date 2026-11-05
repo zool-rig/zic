@@ -31,7 +31,7 @@ from zic.models.artist import Artist
 from zic.models.genre import Genre
 from zic.models.playlist import Playlist
 from zic.models.song import Song
-from zic.models.user_playlist import UserPlaylist
+from zic.models.user_playlist import UserPlaylist, UserPlaylistNameError
 from zic.utils.covers import MOSAIC_TILES, make_cover_mosaic
 from zic.utils.db_utils import (
     InvalidDatabaseError,
@@ -719,7 +719,8 @@ class ZicApi:
         """Hidden songs aren't played, so they don't count in the totals."""
         cur = self.connection.execute(
             "SELECT user_playlists.id, user_playlists.name, "
-            "COUNT(songs.id), COALESCE(SUM(songs.duration), 0) "
+            "COUNT(songs.id), COALESCE(SUM(songs.duration), 0), "
+            "user_playlists.folder "
             "FROM user_playlists "
             "LEFT JOIN user_playlist_songs "
             "ON user_playlist_songs.playlist_id = user_playlists.id "
@@ -729,6 +730,55 @@ class ZicApi:
             "ORDER BY user_playlists.name COLLATE NOCASE"
         )
         return [UserPlaylist(*row) for row in cur.fetchall()]
+
+    def _get_user_playlist(self, playlist_id: int) -> UserPlaylist:
+        return next(p for p in self.get_user_playlists() if p.id == playlist_id)
+
+    def _check_user_playlist_name(
+        self, name: str, playlist: UserPlaylist | None = None
+    ) -> str:
+        """The name to use, without its surrounding spaces. Changing the case of
+        a playlist's own name is fine."""
+        name = name.strip()
+        if not name:
+            raise UserPlaylistNameError("A playlist needs a name.")
+        if self.connection.execute(
+            "SELECT 1 FROM user_playlists WHERE name = ? COLLATE NOCASE AND id != ?",
+            (name, playlist.id if playlist is not None else -1),
+        ).fetchone():
+            raise UserPlaylistNameError(f"There's already a playlist named '{name}'.")
+        return name
+
+    def create_user_playlist(self, name: str) -> UserPlaylist:
+        name = self._check_user_playlist_name(name)
+        with self.connection:
+            playlist_id = self.connection.execute(
+                "INSERT INTO user_playlists (name) VALUES (?)", (name,)
+            ).lastrowid
+        return self._get_user_playlist(playlist_id)
+
+    def rename_user_playlist(self, playlist: UserPlaylist, name: str) -> UserPlaylist:
+        """Only in the app: its folder, if any, keeps its name."""
+        name = self._check_user_playlist_name(name, playlist)
+        with self.connection:
+            self.connection.execute(
+                "UPDATE user_playlists SET name = ? WHERE id = ?", (name, playlist.id)
+            )
+        return self._get_user_playlist(playlist.id)
+
+    def delete_user_playlist(self, playlist: UserPlaylist) -> None:
+        """Only in the app: songs and files stay. Its folder, if any, is
+        remembered so that it doesn't come back at the next scan."""
+        with self.connection:
+            if playlist.folder is not None:
+                self.connection.execute(
+                    "INSERT OR IGNORE INTO user_playlist_ignored_folders (folder) "
+                    "VALUES (?)",
+                    (playlist.folder,),
+                )
+            self.connection.execute(
+                "DELETE FROM user_playlists WHERE id = ?", (playlist.id,)
+            )
 
     def get_user_playlist_songs(self, playlist: UserPlaylist) -> list[Song]:
         cur = self.connection.execute(

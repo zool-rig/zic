@@ -8,8 +8,11 @@ from PIL import Image
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QLineEdit
 
+from zic.app import GlobalKeyFilter
+from zic.models.user_playlist import UserPlaylistNameError
 from zic.utils.covers import make_cover_mosaic
 from zic.widgets.add_to_playlist_menu import (
     build_add_to_playlist_menu,
@@ -234,6 +237,67 @@ def test_playlists_of_a_song(api):
     assert api.get_user_playlist_ids_of_song(song_of(api, 1)) == {road.id}
 
 
+def test_create_playlist(api):
+    playlist = api.create_user_playlist("  Road trip ")
+
+    assert playlist.name == "Road trip"
+    assert playlist.folder is None
+    assert playlist.song_count == 0
+    assert playlist in api.get_user_playlists()
+
+
+@pytest.mark.parametrize("name", ["", "   ", "road", "ROAD "])
+def test_create_playlist_refuses_empty_or_taken_names(api, name):
+    add_playlist(api, "Road", [])
+    with pytest.raises(UserPlaylistNameError):
+        api.create_user_playlist(name)
+
+
+def test_rename_playlist(api):
+    playlist = add_playlist(api, "Road", [1])
+
+    renamed = api.rename_user_playlist(playlist, "Trip")
+
+    assert (renamed.id, renamed.name, renamed.song_count) == (playlist.id, "Trip", 1)
+
+
+def test_rename_playlist_can_change_the_case_but_not_take_a_name(api):
+    add_playlist(api, "Other", [])
+    playlist = add_playlist(api, "Road", [])
+
+    assert api.rename_user_playlist(playlist, "ROAD").name == "ROAD"
+    with pytest.raises(UserPlaylistNameError):
+        api.rename_user_playlist(playlist, "other")
+
+
+def test_delete_playlist_keeps_the_songs(api):
+    playlist = add_playlist(api, "Road", [1])
+
+    api.delete_user_playlist(playlist)
+
+    assert api.get_user_playlists() == []
+    assert song_of(api, 1).id == 1
+    assert api.connection.execute(
+        "SELECT count(*) FROM user_playlist_songs"
+    ).fetchone() == (0,)
+    assert api.connection.execute(
+        "SELECT count(*) FROM user_playlist_ignored_folders"
+    ).fetchone() == (0,)
+
+
+def test_delete_playlist_remembers_its_folder(api):
+    api.connection.execute(
+        "INSERT INTO user_playlists (name, folder) VALUES ('Trip', 'Road')"
+    )
+    playlist = api.get_user_playlists()[0]
+
+    api.delete_user_playlist(playlist)
+
+    assert api.connection.execute(
+        "SELECT folder FROM user_playlist_ignored_folders"
+    ).fetchall() == [("Road",)]
+
+
 # --- widget ------------------------------------------------------------
 
 
@@ -406,26 +470,28 @@ def test_widget_removes_the_last_song_without_closing(qapp, api):
     assert widget.songs_info_lbl.text() == "0 songs · 0 min"
 
 
+def named_actions(menu):
+    return {a.text(): a for a in menu.actions() if not a.isSeparator()}
+
+
 def test_add_menu_lists_playlists_and_disables_those_with_the_song(qapp, api):
     road = add_playlist(api, "Road", [1])
     other = add_playlist(api, "Other", [2])
 
     menu = build_add_to_playlist_menu(api, song_of(api, 1))
 
-    actions = {a.text(): a for a in menu.actions()}
-    assert set(actions) == {"Road", "Other"}
+    actions = named_actions(menu)
+    assert set(actions) == {"Road", "Other", "New playlist..."}
     assert not actions["Road"].isEnabled()
     assert actions["Other"].isEnabled()
     assert actions["Other"].data() == other
+    assert actions["New playlist..."].isEnabled()
     assert road != other
 
 
-def test_add_menu_says_when_there_is_no_playlist(qapp, api):
+def test_add_menu_can_always_create_a_playlist(qapp, api):
     menu = build_add_to_playlist_menu(api, song_of(api, 1))
-
-    (action,) = menu.actions()
-    assert not action.isEnabled()
-    assert "_playlists" in action.text()
+    assert list(named_actions(menu)) == ["New playlist..."]
 
 
 def choose_first_action(monkeypatch):
@@ -477,3 +543,161 @@ def test_playlist_rows_refresh_the_playlist_they_add_to(qapp, api, monkeypatch):
     widget.song_widgets[3].add_to_playlist_btn.click()
 
     assert widget.list_widget.item(0).text() == "A other\n2 songs · 6 min"
+
+
+# --- creating, renaming, deleting ------------------------------------------
+
+
+DIALOGS = "zic.dialogs.user_playlist_dialogs"
+
+
+def answer_names(monkeypatch, *names):
+    """The dialog answers these names in turn, then None as if cancelled. The
+    prompts and errors shown are returned."""
+    answers = iter(names)
+    shown = {"prefills": [], "errors": []}
+
+    def ask_name(_, __, name):
+        shown["prefills"].append(name)
+        return next(answers, None)
+
+    monkeypatch.setattr(f"{DIALOGS}.ask_name", ask_name)
+    monkeypatch.setattr(
+        f"{DIALOGS}.show_name_error", lambda _, m: shown["errors"].append(m)
+    )
+    return shown
+
+
+def test_new_button_creates_and_opens_the_playlist(qapp, api, monkeypatch):
+    answer_names(monkeypatch, "Road trip")
+    widget = UserPlaylistsWidget(api)
+    widget.fill()
+    assert widget.splitter.isHidden()
+
+    widget.new_btn.click()
+
+    assert not widget.splitter.isHidden()
+    assert widget.playlist.name == "Road trip"
+    assert not widget.details_widget.isHidden()
+    assert widget.title_lbl.text() == "Road trip"
+
+
+def test_new_button_cancelled_creates_nothing(qapp, api, monkeypatch):
+    answer_names(monkeypatch)
+    widget = UserPlaylistsWidget(api)
+    widget.fill()
+
+    widget.new_btn.click()
+
+    assert api.get_user_playlists() == []
+    assert widget.playlist is None
+
+
+def test_invalid_name_asks_again_keeping_what_was_typed(qapp, api, monkeypatch):
+    add_playlist(api, "Road", [])
+    shown = answer_names(monkeypatch, "road", "Other")
+    widget = UserPlaylistsWidget(api)
+    widget.fill()
+
+    widget.new_btn.click()
+
+    assert shown["prefills"] == ["", "road"]
+    assert len(shown["errors"]) == 1
+    assert widget.playlist.name == "Other"
+
+
+def test_rename_button_keeps_the_playlist_open_with_its_songs(qapp, api, monkeypatch):
+    add_playlist(api, "A", [])
+    widget = UserPlaylistsWidget(api)
+    add_playlist(api, "Road", [3, 1])
+    widget.fill()
+    widget.list_widget.setCurrentRow(1)
+    shown = answer_names(monkeypatch, "Zebra")
+
+    widget.rename_btn.click()
+
+    assert shown["prefills"] == ["Road"]
+    assert widget.playlist.name == "Zebra"
+    assert widget.title_lbl.text() == "Zebra"
+    assert widget.list_widget.item(1).text().startswith("Zebra\n")
+    assert list(widget.song_widgets) == [3, 1]
+
+
+def test_rename_button_cancelled_changes_nothing(qapp, api, monkeypatch):
+    widget = open_playlist(api, "Road", [3])
+    answer_names(monkeypatch)
+
+    widget.rename_btn.click()
+
+    assert api.get_user_playlists()[0].name == "Road"
+
+
+def test_delete_button_asks_first(qapp, api, monkeypatch):
+    widget = open_playlist(api, "Road", [3])
+    module = "zic.widgets.user_playlists_widget"
+
+    monkeypatch.setattr(f"{module}.confirm_deletion", lambda *_: False)
+    widget.delete_btn.click()
+    assert len(api.get_user_playlists()) == 1
+    assert widget.playlist is not None
+
+    monkeypatch.setattr(f"{module}.confirm_deletion", lambda *_: True)
+    widget.delete_btn.click()
+    assert api.get_user_playlists() == []
+    assert widget.playlist is None
+    assert not widget.empty_lbl.isHidden()
+
+
+def test_add_menu_creates_a_playlist_with_the_song(qapp, api, monkeypatch):
+    answer_names(monkeypatch, "Fresh")
+    monkeypatch.setattr(
+        "zic.widgets.add_to_playlist_menu.choose_action", lambda m: m.actions()[-1]
+    )
+
+    target = show_add_to_playlist_menu(api, song_of(api, 1), None)
+
+    assert target.name == "Fresh"
+    assert song_ids(api, target) == [1]
+
+
+def test_playlist_created_from_a_row_shows_up_in_the_list(qapp, api, monkeypatch):
+    widget = open_playlist(api, "Road", [3])
+    answer_names(monkeypatch, "Fresh")
+    monkeypatch.setattr(
+        "zic.widgets.add_to_playlist_menu.choose_action", lambda m: m.actions()[-1]
+    )
+
+    widget.song_widgets[3].add_to_playlist_btn.click()
+
+    assert widget.list_widget.count() == 2
+    assert widget.playlist.name == "Road"
+    assert list(widget.song_widgets) == [3]
+
+
+def test_text_fields_keep_their_spaces_despite_the_global_hotkeys(qapp):
+    # A field the main window doesn't know of, like those of the dialogs.
+    class FakeApp:
+        text_edits = ()
+
+        def __init__(self):
+            self.pressed = []
+
+        def keyPressEvent(self, event):
+            self.pressed.append(event.key())
+
+    fake_app = FakeApp()
+    key_filter = GlobalKeyFilter(fake_app)
+    qapp.installEventFilter(key_filter)
+    field = QLineEdit()
+    field.show()
+    field.activateWindow()
+    QTest.qWaitForWindowActive(field)
+    field.setFocus()
+    try:
+        assert qapp.focusWidget() is field
+        QTest.keyClicks(field, "road trip")
+    finally:
+        qapp.removeEventFilter(key_filter)
+
+    assert field.text() == "road trip"
+    assert fake_app.pressed == []

@@ -7,10 +7,13 @@ from PySide6.QtWidgets import (
     QDialog,
     QFrame,
     QHBoxLayout,
+    QLineEdit,
     QMenuBar,
     QMessageBox,
+    QPlainTextEdit,
     QSplitter,
     QStackedWidget,
+    QTextEdit,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -625,6 +628,10 @@ class GlobalKeyFilter(QObject):
                 Qt.Key_Right,
             }
             and not any(widget.hasFocus() for widget in self.app_instance.text_edits)
+            # Those of the dialogs too: they need their spaces and arrows.
+            and not isinstance(
+                QApplication.focusWidget(), (QLineEdit, QTextEdit, QPlainTextEdit)
+            )
         ):
             self.app_instance.keyPressEvent(event)
             return True

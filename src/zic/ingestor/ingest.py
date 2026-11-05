@@ -1019,6 +1019,17 @@ def ingest_playlist_file(
     return (song[0] if song else None), status
 
 
+def available_playlist_name(conn: sqlite3.Connection, name: str) -> str:
+    """The playlist of a new folder may not take the name of an existing one."""
+    candidate, number = name, 1
+    while conn.execute(
+        "SELECT 1 FROM user_playlists WHERE name = ? COLLATE NOCASE", (candidate,)
+    ).fetchone():
+        number += 1
+        candidate = f"{name} ({number})"
+    return candidate
+
+
 def sync_user_playlists(
     conn: sqlite3.Connection,
     folders: dict[str, list[tuple[str, int]]],
@@ -1027,23 +1038,41 @@ def sync_user_playlists(
     """Applies what changed in the playlists' folders. `folders` holds the
     (path, song id) of the files found in each one, in order. The `failed`
     playlists had a file that couldn't be ingested: they stay as they are rather
-    than losing a song over what may be a passing error."""
-    existing = dict(conn.execute("SELECT name, id FROM user_playlists").fetchall())
+    than losing a song over what may be a passing error. Playlists without a
+    folder were made in the app: they aren't concerned."""
+    existing = dict(
+        conn.execute(
+            "SELECT folder, id FROM user_playlists WHERE folder IS NOT NULL"
+        ).fetchall()
+    )
+    ignored = {
+        row[0]
+        for row in conn.execute("SELECT folder FROM user_playlist_ignored_folders")
+    }
 
-    for name, playlist_id in existing.items():
-        if name not in folders and name not in failed:
+    for folder, playlist_id in existing.items():
+        if folder not in folders and folder not in failed:
             conn.execute("DELETE FROM user_playlists WHERE id = ?", (playlist_id,))
-            LOGGER.info(f"Playlist removed (folder not found) : '{name}'")
+            LOGGER.info(f"Playlist removed (folder not found) : '{folder}'")
 
-    for name, files in folders.items():
-        if name in failed:
+    # A deleted playlist's folder that's gone is forgotten: if it comes back,
+    # it's a new one.
+    for folder in ignored:
+        if folder not in folders and folder not in failed:
+            conn.execute(
+                "DELETE FROM user_playlist_ignored_folders WHERE folder = ?", (folder,)
+            )
+
+    for folder, files in folders.items():
+        if folder in failed or folder in ignored:
             continue
-        playlist_id = existing.get(name)
+        playlist_id = existing.get(folder)
         if playlist_id is None:
             playlist_id = conn.execute(
-                "INSERT INTO user_playlists (name) VALUES (?)", (name,)
+                "INSERT INTO user_playlists (name, folder) VALUES (?, ?)",
+                (available_playlist_name(conn, folder), folder),
             ).lastrowid
-            LOGGER.info(f"Playlist created : '{name}'")
+            LOGGER.info(f"Playlist created : '{folder}'")
         sync_user_playlist_files(conn, playlist_id, files)
 
 

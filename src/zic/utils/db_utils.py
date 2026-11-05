@@ -66,6 +66,14 @@ MIGRATIONS: list[list[str]] = [
         """,
         "CREATE INDEX idx_user_playlist_files_song_id ON user_playlist_files(song_id)",
     ],
+    # 4: playlists made in the app or renamed: their folder isn't their name
+    # anymore. Until now, all of them were named after their folder.
+    [
+        "ALTER TABLE user_playlists ADD COLUMN folder TEXT",
+        "UPDATE user_playlists SET folder = name",
+        "CREATE UNIQUE INDEX idx_user_playlists_folder ON user_playlists(folder)",
+        "CREATE TABLE user_playlist_ignored_folders (folder TEXT PRIMARY KEY)",
+    ],
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 
