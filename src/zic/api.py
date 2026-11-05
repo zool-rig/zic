@@ -31,6 +31,7 @@ from zic.models.artist import Artist
 from zic.models.genre import Genre
 from zic.models.playlist import Playlist
 from zic.models.song import Song
+from zic.models.user_playlist import UserPlaylist
 from zic.utils.db_utils import (
     InvalidDatabaseError,
     RowFactory,
@@ -709,6 +710,54 @@ class ZicApi:
             ),
             lambda exclude_ids: self.get_near_songs_from_album(
                 album, exclude_ids=exclude_ids
+            ),
+            self.fetch_random_songs,
+        )
+
+    def get_user_playlists(self) -> list[UserPlaylist]:
+        """Hidden songs aren't played, so they don't count in the totals."""
+        cur = self.connection.execute(
+            "SELECT user_playlists.id, user_playlists.name, "
+            "COUNT(songs.id), COALESCE(SUM(songs.duration), 0) "
+            "FROM user_playlists "
+            "LEFT JOIN user_playlist_songs "
+            "ON user_playlist_songs.playlist_id = user_playlists.id "
+            "LEFT JOIN songs "
+            "ON songs.id = user_playlist_songs.song_id AND songs.hidden = FALSE "
+            "GROUP BY user_playlists.id "
+            "ORDER BY user_playlists.name COLLATE NOCASE"
+        )
+        return [UserPlaylist(*row) for row in cur.fetchall()]
+
+    def get_user_playlist_songs(self, playlist: UserPlaylist) -> list[Song]:
+        cur = self.connection.execute(
+            "SELECT song_id FROM user_playlist_songs "
+            "WHERE playlist_id = ? ORDER BY position",
+            (playlist.id,),
+        )
+        return self._get_songs_by_ids([row[0] for row in cur.fetchall()])
+
+    def get_user_playlist_queue(
+        self,
+        playlist: UserPlaylist,
+        song: Song | None = None,
+        shuffle: bool = False,
+    ) -> Playlist:
+        """The playlist's songs (from `song` if given), then the near genres of
+        the last one, then a random selection. Random only if there's no song to
+        play in the playlist, as starting a playlist always plays something."""
+        songs = self.get_user_playlist_songs(playlist)
+        if shuffle:
+            random.shuffle(songs)
+        if song is not None:
+            start = next((i for i, s in enumerate(songs) if s.id == song.id), 0)
+            songs = songs[start:]
+        if not songs:
+            return Playlist(self.fetch_random_songs)
+        return Playlist(
+            lambda *_: songs,
+            lambda exclude_ids: self.get_near_songs_from_album(
+                songs[-1].album, exclude_ids=exclude_ids
             ),
             self.fetch_random_songs,
         )

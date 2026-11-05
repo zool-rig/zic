@@ -24,6 +24,7 @@ from zic.models.album import Album, AlbumCover
 from zic.models.artist import Artist
 from zic.models.genre import Genre
 from zic.models.song import Song
+from zic.models.user_playlist import UserPlaylist
 from zic.resources import get_resource
 from zic.utils.qt_utils import SignalsOFF, make_toolbutton, named_widget
 from zic.utils.release import find_release_date, package_metadata, package_version
@@ -35,6 +36,7 @@ from zic.widgets.genres_filter_widget import GenresFilterWidget
 from zic.widgets.player_widget import PlayerWidget
 from zic.widgets.rules import HRule, VRule
 from zic.widgets.toggle_switch import ToggleSwitch
+from zic.widgets.user_playlists_widget import UserPlaylistsWidget
 
 
 class ZicUI(QDialog):
@@ -71,13 +73,19 @@ class ZicUI(QDialog):
         self.filter_tab_frame = None
         self.toggle_artists_btn = None
         self.toggle_genres_btn = None
+        self.toggle_playlists_btn = None
         self.h_splitter = None
         self.filter_stacked_widget = None
         self.artist_filter_widget = None
         self.genre_filter_widget = None
+        self.library_stack = None
         self.album_explorer = None
+        self.user_playlists_widget = None
         self.album_view = None
         self.player_widget = None
+
+        # Whether the album view is to be shown again when leaving the playlists.
+        self.album_view_was_visible: bool = False
 
         # Menus
         self.database_menu = None
@@ -126,11 +134,16 @@ class ZicUI(QDialog):
         self.toggle_genres_btn = make_toolbutton(
             "icons/tag.png", tooltip="Toggle genres view", checkable=True
         )
+        self.toggle_playlists_btn = make_toolbutton(
+            "icons/music.png", tooltip="Toggle playlists view", checkable=True
+        )
         self.h_splitter = QSplitter(Qt.Horizontal)
         self.filter_stacked_widget = QStackedWidget()
         self.artist_filter_widget = ArtistsFilterWidget(self)
         self.genre_filter_widget = GenresFilterWidget(self)
+        self.library_stack = QStackedWidget()
         self.album_explorer = AlbumExplorer(self.api)
+        self.user_playlists_widget = UserPlaylistsWidget(self.api)
         self.album_view = AlbumView(self.api)
         self.player_widget = PlayerWidget(self)
 
@@ -194,12 +207,18 @@ class ZicUI(QDialog):
         self.filter_tab_frame.setLayout(self.filter_tab_v_layout)
         self.filter_tab_v_layout.addWidget(self.toggle_artists_btn)
         self.filter_tab_v_layout.addWidget(self.toggle_genres_btn)
+        self.side_bar_v_layout.addWidget(HRule())
+        self.side_bar_v_layout.addWidget(
+            self.toggle_playlists_btn, alignment=Qt.AlignHCenter
+        )
         self.main_h_layout.addWidget(VRule())
         self.main_h_layout.addWidget(self.h_splitter)
         self.h_splitter.addWidget(self.filter_stacked_widget)
         self.filter_stacked_widget.addWidget(self.artist_filter_widget)
         self.filter_stacked_widget.addWidget(self.genre_filter_widget)
-        self.h_splitter.addWidget(self.album_explorer)
+        self.h_splitter.addWidget(self.library_stack)
+        self.library_stack.addWidget(self.album_explorer)
+        self.library_stack.addWidget(self.user_playlists_widget)
         self.h_splitter.addWidget(self.album_view)
         self.main_v_layout.addWidget(HRule(), Qt.AlignBottom)
         self.main_v_layout.addWidget(self.player_widget)
@@ -211,6 +230,17 @@ class ZicUI(QDialog):
         self.toggle_genres_btn.clicked.connect(
             lambda: self.on_filter_toggled(self.toggle_genres_btn)
         )
+        self.toggle_playlists_btn.clicked.connect(self.on_playlists_toggled)
+        self.user_playlists_widget.play_playlist_requested.connect(
+            self.play_user_playlist
+        )
+        self.user_playlists_widget.shuffle_playlist_requested.connect(
+            self.shuffle_user_playlist
+        )
+        self.user_playlists_widget.play_song_requested.connect(
+            self.play_user_playlist_song
+        )
+        self.user_playlists_widget.song_edited.connect(self.on_playlist_song_edited)
         self.play_random_btn.clicked.connect(self.on_play_random_btn_clicked)
         self.reload_btn.clicked.connect(self.reload)
         self.album_explorer.album_selected.connect(self.on_album_selected)
@@ -266,7 +296,29 @@ class ZicUI(QDialog):
         self.api.disconnect()
         get_user_config().save()
 
+    def on_playlists_toggled(self, checked: bool) -> None:
+        if checked:
+            self.album_view_was_visible = not self.album_view.isHidden()
+            self.album_view.hide()
+            self.filter_stacked_widget.hide()
+            self.user_playlists_widget.fill()
+            self.library_stack.setCurrentWidget(self.user_playlists_widget)
+        else:
+            self.library_stack.setCurrentWidget(self.album_explorer)
+            self.album_view.setVisible(self.album_view_was_visible)
+            self.filter_stacked_widget.setVisible(
+                self.toggle_artists_btn.isChecked()
+                or self.toggle_genres_btn.isChecked()
+            )
+
+    def show_albums_page(self) -> None:
+        """For what can only be shown along with the albums."""
+        if self.toggle_playlists_btn.isChecked():
+            self.toggle_playlists_btn.setChecked(False)
+            self.on_playlists_toggled(False)
+
     def on_filter_toggled(self, button: QToolButton) -> None:
+        self.show_albums_page()
         other_button, index = (
             (self.toggle_genres_btn, 0)
             if button == self.toggle_artists_btn
@@ -297,6 +349,8 @@ class ZicUI(QDialog):
 
         # Clear and refill album explorer
         self.album_explorer.fill()
+        if self.toggle_playlists_btn.isChecked():
+            self.user_playlists_widget.fill()
 
         # Clear artist and genre filters
         self.artist_filter_widget.clear()
@@ -329,13 +383,36 @@ class ZicUI(QDialog):
         self.player_widget.set_playlist(playlist)
         self.player_widget.play()
 
+    def play_user_playlist(self, user_playlist: UserPlaylist) -> None:
+        self.player_widget.set_playlist(self.api.get_user_playlist_queue(user_playlist))
+        self.player_widget.play()
+
+    def shuffle_user_playlist(self, user_playlist: UserPlaylist) -> None:
+        self.player_widget.set_playlist(
+            self.api.get_user_playlist_queue(user_playlist, shuffle=True)
+        )
+        self.player_widget.play()
+
+    def play_user_playlist_song(self, user_playlist: UserPlaylist, song: Song) -> None:
+        self.player_widget.set_playlist(
+            self.api.get_user_playlist_queue(user_playlist, song=song)
+        )
+        self.player_widget.play()
+
+    def on_playlist_song_edited(self) -> None:
+        self.reload()
+        # The album view isn't refreshed by a reload, and may be showing this song.
+        self.album_view_was_visible = False
+
     def on_song_started(self, song: Song) -> None:
         self.album_view.start_playing_song_display(song)
         self.album_explorer.start_playing_album_display(song.album)
+        self.user_playlists_widget.start_playing_song_display(song)
 
     def on_song_paused(self, _: Song) -> None:
         self.album_view.stop_current_playing_song_display()
         self.album_explorer.stop_current_playing_album_display()
+        self.user_playlists_widget.stop_current_playing_song_display()
 
     def on_crossfade_toggled(self, checked: bool) -> None:
         get_user_config().crossfade = checked
@@ -343,6 +420,7 @@ class ZicUI(QDialog):
     def on_song_finished(self, _: Song) -> None:
         self.album_view.stop_current_playing_song_display()
         self.album_explorer.stop_current_playing_album_display()
+        self.user_playlists_widget.stop_current_playing_song_display()
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key_bindings = {v: k for k, v in get_user_config().key_bindings.items()}
@@ -393,24 +471,28 @@ class ZicUI(QDialog):
         QTimer.singleShot(0, lambda: self.album_view.scroll_to_song(song))
 
     def jump_to_album(self, album: Album) -> None:
+        self.show_albums_page()
         self.album_view.show()
         self.album_view.set_album(album, self.api.get_album_cover_thumbnail(album))
         self.album_view.start_playing_song_display(self.player_widget.current_song)
         self.album_explorer.start_playing_album_display(album)
 
     def jump_to_artists(self, artists: list[Artist]) -> None:
+        self.show_albums_page()
         if not self.toggle_artists_btn.isChecked():
             self.toggle_artists_btn.setChecked(True)
             self.on_filter_toggled(self.toggle_artists_btn)
         self.artist_filter_widget.select_artists(artists)
 
     def jump_to_genres(self, genres: list[Genre]) -> None:
+        self.show_albums_page()
         if not self.toggle_genres_btn.isChecked():
             self.toggle_genres_btn.setChecked(True)
             self.on_filter_toggled(self.toggle_genres_btn)
         self.genre_filter_widget.select_genres(genres)
 
     def show_album(self, album: Album, highlighted_song: Song | None = None) -> None:
+        self.show_albums_page()
         # Making the album current in the explorer opens it in the album view,
         # unless it's hidden by a filter or already current.
         self.album_explorer.reveal_album(album)

@@ -6,6 +6,7 @@ import re
 import sqlite3
 import sys
 import time
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -143,6 +144,9 @@ LEADING_ARTICLE_RE = re.compile(r"^(the|a|an|le|la|les|un|une|des)\s+", re.IGNOR
 ARTIST_SPLIT_RE = re.compile(r"\s*(?:,|;|/|&|\bfeat\.?\b|\bft\.?\b)\s*", re.IGNORECASE)
 
 FILES_PER_COMMIT = 10
+
+# Each folder directly under this one, at the library's root, is a playlist.
+PLAYLISTS_DIR = "_playlists"
 
 LOGGER = get_logger("Ingest")
 
@@ -964,6 +968,94 @@ def find_audio_files(root: Path):
             yield path
 
 
+def playlist_name_of(path: Path, root: Path) -> str | None:
+    """The playlist a file belongs to: _playlists/<name>/, however deep. A file
+    directly in _playlists/ is in no folder, so it's an ordinary song."""
+    parts = path.relative_to(root).parts
+    return parts[1] if len(parts) >= 3 and parts[0] == PLAYLISTS_DIR else None
+
+
+def natural_sort_key(text: str) -> list[str | int]:
+    """Sorts numbers by value: '2.mp3' before '10.mp3'. re.split alternates
+    text and digits, so that compared lists never mix types at one index."""
+    return [
+        int(part) if part.isdecimal() else part
+        for part in re.split(r"(\d+)", text.casefold())
+    ]
+
+
+def order_paths_to_ingest(paths: Iterable[Path], root: Path) -> list[Path]:
+    """Library files first, so that a song also copied in a playlist keeps its
+    path in the library. Then the playlists' files, in their playlist order."""
+    library, in_playlists = [], []
+    for path in sorted(paths):
+        (library if playlist_name_of(path, root) is None else in_playlists).append(path)
+    in_playlists.sort(key=lambda p: natural_sort_key(p.relative_to(root).as_posix()))
+    return library + in_playlists
+
+
+def ingest_playlist_file(
+    conn: sqlite3.Connection,
+    path: Path,
+    root: Path,
+    ingest_one: Callable[[Path], str],
+) -> tuple[int | None, str]:
+    """The id of the song a playlist file holds, if readable, and the ingest
+    status. A copy of a known song just refers to it: there is nothing to read,
+    and warning about it at every scan would be noise."""
+    rel_path = str(path.relative_to(root))
+    is_known = conn.execute(
+        "SELECT 1 FROM songs WHERE path = ?", (rel_path,)
+    ).fetchone()
+    if not is_known:
+        for song_id, other_path in conn.execute(
+            "SELECT id, path FROM songs WHERE content_hash = ?", (compute_hash(path),)
+        ).fetchall():
+            if (root / other_path).exists():
+                return song_id, "unchanged"
+
+    status = ingest_one(path)
+    song = conn.execute("SELECT id FROM songs WHERE path = ?", (rel_path,)).fetchone()
+    return (song[0] if song else None), status
+
+
+def sync_user_playlists(
+    conn: sqlite3.Connection, memberships: dict[str, list[int]], failed: set[str]
+) -> None:
+    """Makes the playlists match their folders. `memberships` holds the song ids
+    found in each folder, in order. The `failed` playlists had a file that
+    couldn't be ingested: they stay as they are rather than losing a song over
+    what may be a passing error."""
+    existing = dict(conn.execute("SELECT name, id FROM user_playlists").fetchall())
+
+    for name, playlist_id in existing.items():
+        if name not in memberships and name not in failed:
+            conn.execute("DELETE FROM user_playlists WHERE id = ?", (playlist_id,))
+            LOGGER.info(f"Playlist removed (folder not found) : '{name}'")
+
+    for name, song_ids in memberships.items():
+        if name in failed:
+            continue
+        playlist_id = existing.get(name)
+        if playlist_id is None:
+            playlist_id = conn.execute(
+                "INSERT INTO user_playlists (name) VALUES (?)", (name,)
+            ).lastrowid
+            LOGGER.info(f"Playlist created : '{name}'")
+        conn.execute(
+            "DELETE FROM user_playlist_songs WHERE playlist_id = ?", (playlist_id,)
+        )
+        # The same song twice in a folder only counts once, at its first place.
+        conn.executemany(
+            "INSERT INTO user_playlist_songs (playlist_id, song_id, position) "
+            "VALUES (?, ?, ?)",
+            (
+                (playlist_id, song_id, position)
+                for position, song_id in enumerate(dict.fromkeys(song_ids))
+            ),
+        )
+
+
 def ingest(
     root: Path,
     db_path: Path,
@@ -992,9 +1084,24 @@ def ingest(
             for id_, gname in conn.execute("SELECT id, name FROM genres")
         }
 
+        def ingest_one(path: Path) -> str:
+            return ingest_file(
+                conn,
+                path,
+                root,
+                rescan,
+                discogs_secret,
+                cover_attempted,
+                discogs_albums_data,
+                genres_name_id_map,
+                genres_reset,
+            )
+
         # Listed upfront to know the total; sorted so that each album's
         # files are processed (and logged) together.
-        paths = sorted(find_audio_files(root))
+        paths = order_paths_to_ingest(find_audio_files(root), root)
+        playlist_memberships: dict[str, list[int]] = {}
+        failed_playlists: set[str] = set()
 
         progress = (
             JsonIngestProgress(root, len(paths), LOGGER)
@@ -1005,18 +1112,18 @@ def ingest(
             for path in paths:
                 progress.start_file(path)
                 files_to_commit += 1
+                playlist_name = playlist_name_of(path, root)
                 try:
-                    status = ingest_file(
-                        conn,
-                        path,
-                        root,
-                        rescan,
-                        discogs_secret,
-                        cover_attempted,
-                        discogs_albums_data,
-                        genres_name_id_map,
-                        genres_reset,
-                    )
+                    if playlist_name is None:
+                        status = ingest_one(path)
+                    else:
+                        song_id, status = ingest_playlist_file(
+                            conn, path, root, ingest_one
+                        )
+                        if song_id is not None:
+                            playlist_memberships.setdefault(playlist_name, []).append(
+                                song_id
+                            )
                     # Unchanged files are the bulk of an incremental scan, and
                     # skipped ones already logged why: the counters suffice.
                     log = (
@@ -1027,6 +1134,8 @@ def ingest(
                     log(f"Song {status} : '{path.relative_to(root)}'")
                 except Exception as e:  # noqa BLE001
                     status = "error"
+                    if playlist_name is not None:
+                        failed_playlists.add(playlist_name)
                     LOGGER.error(f"Failed to ingest '{path.relative_to(root)}': {e!r}")
                 progress.finish_file(status)
 
@@ -1038,6 +1147,7 @@ def ingest(
                 remove_missing_songs(
                     conn, root, {str(p.relative_to(root)) for p in paths}
                 )
+                sync_user_playlists(conn, playlist_memberships, failed_playlists)
             else:
                 # Most likely an unmounted drive or a wrong folder, rather
                 # than a library emptied on purpose: keep everything.

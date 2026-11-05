@@ -29,6 +29,27 @@ MIGRATIONS: list[list[str]] = [
         "ALTER TABLE songs ADD COLUMN cue_in REAL",
         "ALTER TABLE songs ADD COLUMN cue_out REAL",
     ],
+    # 2: user playlists, mirroring the folders of the library's _playlists/
+    [
+        """
+        CREATE TABLE user_playlists (
+            id    INTEGER PRIMARY KEY,
+            name  TEXT NOT NULL UNIQUE
+        )
+        """,
+        """
+        CREATE TABLE user_playlist_songs (
+            playlist_id  INTEGER NOT NULL,
+            song_id      INTEGER NOT NULL,
+            position     INTEGER NOT NULL,
+
+            PRIMARY KEY (playlist_id, song_id),
+            FOREIGN KEY (playlist_id) REFERENCES user_playlists(id) ON DELETE CASCADE,
+            FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
+        )
+        """,
+        "CREATE INDEX idx_user_playlist_songs_song_id ON user_playlist_songs(song_id)",
+    ],
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 

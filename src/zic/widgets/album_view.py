@@ -16,10 +16,13 @@ class SongWidget(QWidget):
     play_song_requested = Signal(Song)
     info_requested = Signal(Song)
 
-    def __init__(self, song: Song, color: str | None) -> None:
+    def __init__(
+        self, song: Song, color: str | None, show_track_number: bool = True
+    ) -> None:
         super().__init__()
         self.song: Song = song
         self.color = color
+        self.show_track_number: bool = show_track_number
 
         # Layouts
         self.main_h_layout = None
@@ -54,7 +57,7 @@ class SongWidget(QWidget):
         self.sound_wave = SoundWave(bars=4, height=30)
         self.title_lbl = QLabel(
             f"{self.song.track_number} - {self.song.title}"
-            if self.song.track_number is not None
+            if self.show_track_number and self.song.track_number is not None
             else self.song.title
         )
         self.duration_lbl = QLabel(format_duration(self.song.duration))
