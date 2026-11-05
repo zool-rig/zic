@@ -16,12 +16,57 @@ from zic.dialogs.song_info_dialog import SongInfoDialog
 from zic.ingestor.ingest import PLAYLISTS_DIR
 from zic.models.song import Song
 from zic.models.user_playlist import UserPlaylist
-from zic.utils.formatting import format_songs_info, format_songs_total
+from zic.utils.formatting import format_songs_total
 from zic.utils.qt_utils import make_toolbutton, set_label_font_size
+from zic.widgets.add_to_playlist_menu import show_add_to_playlist_menu
 from zic.widgets.album_view import SongWidget
 from zic.widgets.cover_thumbnail import DEFAULT_COVER, CoverThumbnail
 
 LIST_ICON_SIZE = QSize(48, 48)
+
+
+class PlaylistSongWidget(SongWidget):
+    """A song in a playlist, which can be moved or removed from it."""
+
+    move_requested = Signal(Song, int)
+    remove_requested = Signal(Song)
+
+    def init_widgets(self) -> None:
+        super().init_widgets()
+        self.move_up_btn = make_toolbutton(
+            "icons/up-arrow.png",
+            tooltip="Move up",
+            icon_size=QSize(10, 10),
+            name="SmallToolButton",
+        )
+        self.move_down_btn = make_toolbutton(
+            "icons/down-arrow.png",
+            tooltip="Move down",
+            icon_size=QSize(10, 10),
+            name="SmallToolButton",
+        )
+        self.remove_btn = make_toolbutton(
+            "icons/close.png",
+            tooltip="Remove from this playlist",
+            icon_size=QSize(10, 10),
+            name="SmallToolButton",
+        )
+
+    def set_layout(self) -> None:
+        super().set_layout()
+        self.main_h_layout.addWidget(self.move_up_btn)
+        self.main_h_layout.addWidget(self.move_down_btn)
+        self.main_h_layout.addWidget(self.remove_btn)
+
+    def set_connections(self) -> None:
+        super().set_connections()
+        self.move_up_btn.clicked.connect(
+            lambda: self.move_requested.emit(self.song, -1)
+        )
+        self.move_down_btn.clicked.connect(
+            lambda: self.move_requested.emit(self.song, 1)
+        )
+        self.remove_btn.clicked.connect(lambda: self.remove_requested.emit(self.song))
 
 
 class UserPlaylistsWidget(QWidget):
@@ -37,7 +82,7 @@ class UserPlaylistsWidget(QWidget):
         self.api: ZicApi = api
         self.playlist: UserPlaylist | None = None
         self.playing_song: Song | None = None
-        self.song_widgets: dict[int, SongWidget] = {}
+        self.song_widgets: dict[int, PlaylistSongWidget] = {}
 
         # Layouts
         self.main_v_layout = None
@@ -169,7 +214,10 @@ class UserPlaylistsWidget(QWidget):
         )
         pixmap = QPixmap()
         pixmap.loadFromData(self.api.get_user_playlist_cover(playlist) or DEFAULT_COVER)
-        item.setIcon(QIcon(pixmap))
+        icon = QIcon(pixmap)
+        # Qt would otherwise tint the image of the selected playlist.
+        icon.addPixmap(pixmap, QIcon.Selected)
+        item.setIcon(icon)
 
     def close_details(self) -> None:
         # No current item left, so that selecting this playlist opens it again.
@@ -186,20 +234,68 @@ class UserPlaylistsWidget(QWidget):
             return
 
         songs = self.api.get_user_playlist_songs(playlist)
-        self.cover_thumbnail.bytes = (
-            self.api.get_user_playlist_cover(playlist) or DEFAULT_COVER
-        )
-        self.title_lbl.setText(playlist.name)
-        self.songs_info_lbl.setText(format_songs_info(songs))
+        self.update_details_header()
         for song in songs:
-            widget = SongWidget(song, None, show_track_number=False)
+            widget = PlaylistSongWidget(song, None, show_track_number=False)
             widget.play_song_requested.connect(
                 lambda s=song, p=playlist: self.play_song_requested.emit(p, s)
             )
             widget.info_requested.connect(self.show_song_info)
+            widget.add_to_playlist_requested.connect(self.add_song_to_another_playlist)
+            widget.move_requested.connect(self.move_song)
+            widget.remove_requested.connect(self.remove_song)
             self.songs_v_layout.addWidget(widget)
             self.song_widgets[song.id] = widget
         self.update_playing_display()
+        self.update_move_buttons()
+
+    def add_song_to_another_playlist(self, song: Song) -> None:
+        target = show_add_to_playlist_menu(self.api, song, self)
+        if target is not None:
+            self.refresh_playlist_item(target.id)
+
+    def move_song(self, song: Song, offset: int) -> None:
+        self.api.move_song_in_user_playlist(self.playlist, song, offset)
+        # Moved in place rather than rebuilt: the list keeps its scroll position.
+        widget = self.song_widgets[song.id]
+        index = self.songs_v_layout.indexOf(widget)
+        self.songs_v_layout.removeWidget(widget)
+        self.songs_v_layout.insertWidget(index + offset, widget)
+        self.update_move_buttons()
+
+    def remove_song(self, song: Song) -> None:
+        self.api.remove_song_from_user_playlist(self.playlist, song)
+        widget = self.song_widgets.pop(song.id)
+        self.songs_v_layout.removeWidget(widget)
+        widget.setParent(None)
+        widget.deleteLater()
+        self.update_move_buttons()
+        self.refresh_playlist_item(self.playlist.id)
+        self.playlist = self.list_widget.currentItem().data(Qt.UserRole)
+        self.update_details_header()
+
+    def refresh_playlist_item(self, playlist_id: int) -> None:
+        playlist = next(p for p in self.api.get_user_playlists() if p.id == playlist_id)
+        for row in range(self.list_widget.count()):
+            item = self.list_widget.item(row)
+            if item.data(Qt.UserRole).id == playlist_id:
+                self.set_item_playlist(item, playlist)
+
+    def update_details_header(self) -> None:
+        self.cover_thumbnail.bytes = (
+            self.api.get_user_playlist_cover(self.playlist) or DEFAULT_COVER
+        )
+        self.title_lbl.setText(self.playlist.name)
+        self.songs_info_lbl.setText(
+            format_songs_total(self.playlist.song_count, self.playlist.duration)
+        )
+
+    def update_move_buttons(self) -> None:
+        last = self.songs_v_layout.count() - 1
+        for widget in self.song_widgets.values():
+            index = self.songs_v_layout.indexOf(widget)
+            widget.move_up_btn.setEnabled(index > 0)
+            widget.move_down_btn.setEnabled(index < last)
 
     def show_song_info(self, song: Song) -> None:
         dialog = SongInfoDialog(self.api, song, self.window())

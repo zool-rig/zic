@@ -1020,20 +1020,22 @@ def ingest_playlist_file(
 
 
 def sync_user_playlists(
-    conn: sqlite3.Connection, memberships: dict[str, list[int]], failed: set[str]
+    conn: sqlite3.Connection,
+    folders: dict[str, list[tuple[str, int]]],
+    failed: set[str],
 ) -> None:
-    """Makes the playlists match their folders. `memberships` holds the song ids
-    found in each folder, in order. The `failed` playlists had a file that
-    couldn't be ingested: they stay as they are rather than losing a song over
-    what may be a passing error."""
+    """Applies what changed in the playlists' folders. `folders` holds the
+    (path, song id) of the files found in each one, in order. The `failed`
+    playlists had a file that couldn't be ingested: they stay as they are rather
+    than losing a song over what may be a passing error."""
     existing = dict(conn.execute("SELECT name, id FROM user_playlists").fetchall())
 
     for name, playlist_id in existing.items():
-        if name not in memberships and name not in failed:
+        if name not in folders and name not in failed:
             conn.execute("DELETE FROM user_playlists WHERE id = ?", (playlist_id,))
             LOGGER.info(f"Playlist removed (folder not found) : '{name}'")
 
-    for name, song_ids in memberships.items():
+    for name, files in folders.items():
         if name in failed:
             continue
         playlist_id = existing.get(name)
@@ -1042,18 +1044,91 @@ def sync_user_playlists(
                 "INSERT INTO user_playlists (name) VALUES (?)", (name,)
             ).lastrowid
             LOGGER.info(f"Playlist created : '{name}'")
+        sync_user_playlist_files(conn, playlist_id, files)
+
+
+def sync_user_playlist_files(
+    conn: sqlite3.Connection, playlist_id: int, files: list[tuple[str, int]]
+) -> None:
+    """Only what changed in the folder since the last scan touches the playlist,
+    so that its edits in the app stay: its order, the songs added, and the songs
+    removed, whose files are still there."""
+    seen = dict(
         conn.execute(
-            "DELETE FROM user_playlist_songs WHERE playlist_id = ?", (playlist_id,)
+            "SELECT path, song_id FROM user_playlist_files WHERE playlist_id = ?",
+            (playlist_id,),
+        ).fetchall()
+    )
+    members, last_position = set(), -1
+    for song_id, position in conn.execute(
+        "SELECT song_id, position FROM user_playlist_songs WHERE playlist_id = ?",
+        (playlist_id,),
+    ):
+        members.add(song_id)
+        last_position = max(last_position, position)
+    paths = {path for path, _ in files}
+    song_ids = {song_id for _, song_id in files}
+
+    def remove_member(song_id: int) -> None:
+        conn.execute(
+            "DELETE FROM user_playlist_songs WHERE playlist_id = ? AND song_id = ?",
+            (playlist_id, song_id),
         )
+        members.discard(song_id)
+
+    for path, song_id in seen.items():
+        if path not in paths:
+            conn.execute(
+                "DELETE FROM user_playlist_files WHERE playlist_id = ? AND path = ?",
+                (playlist_id, path),
+            )
+            if song_id is not None and song_id not in song_ids:
+                remove_member(song_id)
+
+    for path, song_id in files:
+        if path not in seen:
+            conn.execute(
+                "INSERT INTO user_playlist_files (playlist_id, path, song_id) "
+                "VALUES (?, ?, ?)",
+                (playlist_id, path, song_id),
+            )
+        else:
+            old_song_id = seen[path]
+            if old_song_id == song_id:
+                continue
+            conn.execute(
+                "UPDATE user_playlist_files SET song_id = ? "
+                "WHERE playlist_id = ? AND path = ?",
+                (song_id, playlist_id, path),
+            )
+            if old_song_id is not None and old_song_id not in members:
+                continue  # removed in the app: its new version stays out too
+            if (
+                old_song_id is not None
+                and old_song_id not in song_ids
+                and song_id not in members
+            ):
+                # The file now holds another song, which takes its place.
+                conn.execute(
+                    "UPDATE user_playlist_songs SET song_id = ? "
+                    "WHERE playlist_id = ? AND song_id = ?",
+                    (song_id, playlist_id, old_song_id),
+                )
+                members.discard(old_song_id)
+                members.add(song_id)
+                continue
+            if old_song_id is not None and old_song_id not in song_ids:
+                remove_member(old_song_id)
+
         # The same song twice in a folder only counts once, at its first place.
-        conn.executemany(
-            "INSERT INTO user_playlist_songs (playlist_id, song_id, position) "
-            "VALUES (?, ?, ?)",
-            (
-                (playlist_id, song_id, position)
-                for position, song_id in enumerate(dict.fromkeys(song_ids))
-            ),
-        )
+        if song_id not in members:
+            last_position += 1
+            conn.execute(
+                "INSERT INTO user_playlist_songs (playlist_id, song_id, position) "
+                "VALUES (?, ?, ?)",
+                (playlist_id, song_id, last_position),
+            )
+            members.add(song_id)
 
 
 def ingest(
@@ -1100,7 +1175,7 @@ def ingest(
         # Listed upfront to know the total; sorted so that each album's
         # files are processed (and logged) together.
         paths = order_paths_to_ingest(find_audio_files(root), root)
-        playlist_memberships: dict[str, list[int]] = {}
+        playlist_folders: dict[str, list[tuple[str, int]]] = {}
         failed_playlists: set[str] = set()
 
         progress = (
@@ -1121,8 +1196,8 @@ def ingest(
                             conn, path, root, ingest_one
                         )
                         if song_id is not None:
-                            playlist_memberships.setdefault(playlist_name, []).append(
-                                song_id
+                            playlist_folders.setdefault(playlist_name, []).append(
+                                (str(path.relative_to(root)), song_id)
                             )
                     # Unchanged files are the bulk of an incremental scan, and
                     # skipped ones already logged why: the counters suffice.
@@ -1147,7 +1222,7 @@ def ingest(
                 remove_missing_songs(
                     conn, root, {str(p.relative_to(root)) for p in paths}
                 )
-                sync_user_playlists(conn, playlist_memberships, failed_playlists)
+                sync_user_playlists(conn, playlist_folders, failed_playlists)
             else:
                 # Most likely an unmounted drive or a wrong folder, rather
                 # than a library emptied on purpose: keep everything.

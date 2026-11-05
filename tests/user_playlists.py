@@ -11,6 +11,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from zic.utils.covers import make_cover_mosaic
+from zic.widgets.add_to_playlist_menu import (
+    build_add_to_playlist_menu,
+    show_add_to_playlist_menu,
+)
+from zic.widgets.album_view import AlbumView
 from zic.widgets.cover_thumbnail import DEFAULT_COVER
 from zic.widgets.user_playlists_widget import UserPlaylistsWidget
 
@@ -165,6 +170,70 @@ def test_playlist_without_covers_has_no_image(api):
     assert api.get_user_playlist_cover(add_playlist(api, "Road", [1])) is None
 
 
+def song_ids(api, playlist):
+    return [s.id for s in api.get_user_playlist_songs(playlist)]
+
+
+def song_of(api, song_id):
+    return next(
+        s for a in api.albums() for s in api.get_album_songs(a) if s.id == song_id
+    )
+
+
+def test_add_song_goes_last_and_only_once(api):
+    playlist = add_playlist(api, "Road", [3, 1])
+
+    api.add_song_to_user_playlist(playlist, song_of(api, 2))
+    api.add_song_to_user_playlist(playlist, song_of(api, 3))
+
+    assert song_ids(api, playlist) == [3, 1, 2]
+
+
+def test_add_song_to_an_empty_playlist(api):
+    playlist = add_playlist(api, "Empty", [])
+    api.add_song_to_user_playlist(playlist, song_of(api, 2))
+    assert song_ids(api, playlist) == [2]
+
+
+def test_remove_song_leaves_the_library_alone(api):
+    playlist = add_playlist(api, "Road", [3, 1, 2])
+
+    api.remove_song_from_user_playlist(playlist, song_of(api, 1))
+
+    assert song_ids(api, playlist) == [3, 2]
+    assert song_of(api, 1).id == 1
+
+
+def test_move_song_and_stop_at_the_ends(api):
+    playlist = add_playlist(api, "Road", [3, 1, 2])
+
+    api.move_song_in_user_playlist(playlist, song_of(api, 2), -1)
+    assert song_ids(api, playlist) == [3, 2, 1]
+
+    api.move_song_in_user_playlist(playlist, song_of(api, 3), 1)
+    assert song_ids(api, playlist) == [2, 3, 1]
+
+    api.move_song_in_user_playlist(playlist, song_of(api, 2), -1)
+    api.move_song_in_user_playlist(playlist, song_of(api, 1), 1)
+    assert song_ids(api, playlist) == [2, 3, 1]
+
+
+def test_move_song_skips_over_hidden_songs(api):
+    playlist = add_playlist(api, "Road", [3, 1, 2])
+    third = song_of(api, 2)
+    api.connection.execute("UPDATE songs SET hidden = TRUE WHERE id = 1")
+
+    api.move_song_in_user_playlist(playlist, third, -1)
+
+    assert song_ids(api, playlist) == [2, 3]
+
+
+def test_playlists_of_a_song(api):
+    road = add_playlist(api, "Road", [1])
+    add_playlist(api, "Other", [2])
+    assert api.get_user_playlist_ids_of_song(song_of(api, 1)) == {road.id}
+
+
 # --- widget ------------------------------------------------------------
 
 
@@ -280,3 +349,131 @@ def test_widget_shows_the_playlist_image(qapp, api):
 
     widget.list_widget.setCurrentRow(1)
     assert widget.cover_thumbnail.bytes == DEFAULT_COVER
+
+
+def open_playlist(api, name, ids):
+    add_playlist(api, name, ids)
+    widget = UserPlaylistsWidget(api)
+    widget.fill()
+    widget.list_widget.setCurrentRow(0)
+    return widget
+
+
+def displayed_ids(widget):
+    layout = widget.songs_v_layout
+    return [layout.itemAt(i).widget().song.id for i in range(layout.count())]
+
+
+def test_widget_moves_songs_and_updates_its_buttons(qapp, api):
+    widget = open_playlist(api, "Road", [3, 1, 2])
+
+    assert not widget.song_widgets[3].move_up_btn.isEnabled()
+    assert not widget.song_widgets[2].move_down_btn.isEnabled()
+
+    widget.song_widgets[1].move_up_btn.click()
+
+    assert displayed_ids(widget) == [1, 3, 2]
+    assert song_ids(api, widget.playlist) == [1, 3, 2]
+    assert not widget.song_widgets[1].move_up_btn.isEnabled()
+    assert widget.song_widgets[3].move_up_btn.isEnabled()
+
+    widget.song_widgets[3].move_down_btn.click()
+
+    assert displayed_ids(widget) == [1, 2, 3]
+    assert not widget.song_widgets[3].move_down_btn.isEnabled()
+
+
+def test_widget_removes_a_song_and_updates_the_totals(qapp, api):
+    widget = open_playlist(api, "Road", [3, 1])
+
+    widget.song_widgets[3].remove_btn.click()
+
+    assert displayed_ids(widget) == [1]
+    assert song_ids(api, widget.playlist) == [1]
+    assert widget.list_widget.item(0).text() == "Road\n1 song · 3 min"
+    assert widget.songs_info_lbl.text() == "1 song · 3 min"
+    assert not widget.song_widgets[1].move_up_btn.isEnabled()
+    assert not widget.song_widgets[1].move_down_btn.isEnabled()
+
+
+def test_widget_removes_the_last_song_without_closing(qapp, api):
+    widget = open_playlist(api, "Road", [3])
+
+    widget.song_widgets[3].remove_btn.click()
+
+    assert displayed_ids(widget) == []
+    assert not widget.details_widget.isHidden()
+    assert widget.songs_info_lbl.text() == "0 songs · 0 min"
+
+
+def test_add_menu_lists_playlists_and_disables_those_with_the_song(qapp, api):
+    road = add_playlist(api, "Road", [1])
+    other = add_playlist(api, "Other", [2])
+
+    menu = build_add_to_playlist_menu(api, song_of(api, 1))
+
+    actions = {a.text(): a for a in menu.actions()}
+    assert set(actions) == {"Road", "Other"}
+    assert not actions["Road"].isEnabled()
+    assert actions["Other"].isEnabled()
+    assert actions["Other"].data() == other
+    assert road != other
+
+
+def test_add_menu_says_when_there_is_no_playlist(qapp, api):
+    menu = build_add_to_playlist_menu(api, song_of(api, 1))
+
+    (action,) = menu.actions()
+    assert not action.isEnabled()
+    assert "_playlists" in action.text()
+
+
+def choose_first_action(monkeypatch):
+    # The real menu would wait for a click.
+    monkeypatch.setattr(
+        "zic.widgets.add_to_playlist_menu.choose_action", lambda m: m.actions()[0]
+    )
+
+
+def test_add_menu_adds_the_chosen_song(qapp, api, monkeypatch):
+    other = add_playlist(api, "Other", [2])
+    choose_first_action(monkeypatch)
+
+    target = show_add_to_playlist_menu(api, song_of(api, 1), None)
+
+    assert target == other
+    assert song_ids(api, other) == [2, 1]
+
+
+def test_add_menu_closed_without_choosing_adds_nothing(qapp, api, monkeypatch):
+    other = add_playlist(api, "Other", [2])
+    monkeypatch.setattr(
+        "zic.widgets.add_to_playlist_menu.choose_action", lambda m: None
+    )
+
+    assert show_add_to_playlist_menu(api, song_of(api, 1), None) is None
+    assert song_ids(api, other) == [2]
+
+
+def test_album_rows_can_add_to_a_playlist(qapp, api, monkeypatch):
+    other = add_playlist(api, "Other", [])
+    choose_first_action(monkeypatch)
+    view = AlbumView(api)
+    view.set_album(next(a for a in api.albums() if a.name == "Discovery"), None)
+
+    view.widget_song_map[3].add_to_playlist_btn.click()
+
+    assert song_ids(api, other) == [3]
+
+
+def test_playlist_rows_refresh_the_playlist_they_add_to(qapp, api, monkeypatch):
+    add_playlist(api, "A other", [1])
+    add_playlist(api, "Road", [3])
+    choose_first_action(monkeypatch)
+    widget = UserPlaylistsWidget(api)
+    widget.fill()
+    widget.list_widget.setCurrentRow(1)
+
+    widget.song_widgets[3].add_to_playlist_btn.click()
+
+    assert widget.list_widget.item(0).text() == "A other\n2 songs · 6 min"
