@@ -20,6 +20,7 @@
 - **Smart playlists that never run dry** : an album flows into the rest of the artist's discography, then into albums of *near* genres, then into a random selection (see [Smart playlists](#smart-playlists))
 - **Mood-following shuffle** : the random playlist learns from what you listen to the end, and resets as soon as you skip (see [Mood](#mood))
 - **Genre intelligence** : genre proximity is computed from your own library's co-occurrence patterns, not a fixed taxonomy (see [Genre Intelligence](#genre-intelligence))
+- **Playlists from your folders** : each folder of `_playlists/` becomes a playlist, kept up to date by library scans (see [Your playlists](#your-playlists))
 - **Global search** : find artists, albums, genres and songs as you type, forgiving accents, word order and small typos
 - **Metadata editing** : fix song and album info from the app, optionally written back to your files' tags
 - **Smooth crossfades** : songs blend into each other, outro into intro, skipping silences, while albums keep their own flow (see [Crossfade](#crossfade))
@@ -118,6 +119,34 @@ The playlist drifts along with you: let a song play and you get more of its kind
 
 > [!TIP]
 > The mood relies on genre proximity: [compute genre positions](#computing-positions) once your library is imported.
+
+## Your playlists
+
+Each folder directly under `_playlists/`, at the root of your library, is a playlist named after the folder:
+
+```
+my-library/
+├── Air/Moon Safari/...
+└── _playlists/
+    ├── Road trip/
+    │   ├── 01 - first song.mp3
+    │   └── 02 - second song.mp3
+    └── Workout/...
+```
+
+Scan your library, then open them with the playlists button of the side bar. You can also create playlists right there, without any folder.
+
+- **In the app** : create, rename or delete a playlist, reorder or remove its songs from its songs view, and add any song with the `+` button of its row (which can also create a playlist). This never touches your files: a removed song stays in your library, an added one isn't copied in the folder, and renaming a playlist doesn't rename its folder.
+- **Deleting a playlist** keeps its songs, its folder and its files. As long as the folder is there, scans don't make the playlist come back: to get it back, rename the folder.
+- **In the folder** : scans only apply what changed since the last one, and keep your edits in the app. A new file joins the end of the playlist, a deleted file removes its song, and a song you removed in the app stays out as long as its file doesn't change location.
+- **Order** : when a playlist is created, by file name, numbers sorted by value (`2.mp3` before `10.mp3`). After that, renaming files doesn't reorder it. Subfolders are part of their playlist.
+- **Copies** : a file identical to a song of your library is that song, with its plays and likes, and isn't listed twice. If the original is deleted, the copy takes over.
+- **Songs only in a playlist** are songs like any other: their albums show up among your albums.
+- **At the end of a playlist**, the music goes on with [near genres, then a random selection](#smart-playlists).
+- **Renaming or deleting a folder** removes its playlist with its edits in the app. A renamed folder comes back as a new playlist, in file name order.
+
+> [!NOTE]
+> Copies are recognized by their whole content, tags included. A copy with different tags, including after editing the original's tags, is a separate song, whose album may show up twice.
 
 ## Search
 

@@ -15,11 +15,13 @@ def format_duration(seconds: float) -> str:
 
 def format_songs_info(songs: Sequence[HasDuration]) -> str:
     """'12 songs · 47 min', or '25 songs · 1 h 12 min'."""
-    count = f"{len(songs)} song{'s' if len(songs) != 1 else ''}"
-    minutes = round(sum(song.duration for song in songs) / 60)
-    hours, minutes = divmod(minutes, 60)
+    return format_songs_total(len(songs), sum(song.duration for song in songs))
+
+
+def format_songs_total(count: int, seconds: float) -> str:
+    hours, minutes = divmod(round(seconds / 60), 60)
     duration = f"{hours} h {minutes:02d} min" if hours else f"{minutes} min"
-    return f"{count} · {duration}"
+    return f"{count} song{'s' if count != 1 else ''} · {duration}"
 
 
 def format_size(size: int) -> str:

@@ -4,7 +4,7 @@ PRAGMA foreign_keys = ON;
 
 -- Schema version this file describes: must match len(MIGRATIONS) in
 -- zic.utils.db_utils, bump it along with every new migration.
-PRAGMA user_version = 1;
+PRAGMA user_version = 4;
 
 CREATE TABLE artists (
     id                INTEGER PRIMARY KEY,
@@ -141,7 +141,47 @@ CREATE TABLE IF NOT EXISTS metadata (
     value TEXT
 );
 
+-- Playlists made in the app, or from the folders of the library's _playlists/.
+CREATE TABLE user_playlists (
+    id    INTEGER PRIMARY KEY,
+    name  TEXT NOT NULL UNIQUE,
+    folder TEXT                              -- its folder, NULL if made in the app
+);
+
+CREATE UNIQUE INDEX idx_user_playlists_folder ON user_playlists(folder);
+
+-- Folders of playlists deleted in the app: their files are kept, and scans
+-- must not make them come back.
+CREATE TABLE user_playlist_ignored_folders (
+    folder  TEXT PRIMARY KEY
+);
+
+CREATE TABLE user_playlist_songs (
+    playlist_id  INTEGER NOT NULL,
+    song_id      INTEGER NOT NULL,
+    position     INTEGER NOT NULL,
+
+    PRIMARY KEY (playlist_id, song_id),
+    FOREIGN KEY (playlist_id) REFERENCES user_playlists(id) ON DELETE CASCADE,
+    FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
+);
+
+-- The files seen so far in each playlist's folder. A scan only applies what
+-- changed since: new files are added, and files gone remove their song. So
+-- what's edited in the app (order, songs removed or added) stays.
+CREATE TABLE user_playlist_files (
+    playlist_id  INTEGER NOT NULL,
+    path         TEXT NOT NULL,              -- relative path of the file
+    song_id      INTEGER,                    -- NULL once the song is gone
+
+    PRIMARY KEY (playlist_id, path),
+    FOREIGN KEY (playlist_id) REFERENCES user_playlists(id) ON DELETE CASCADE,
+    FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE SET NULL
+);
+
 -- Useful indexes for frequent lookups/joins
+CREATE INDEX idx_user_playlist_songs_song_id ON user_playlist_songs(song_id);
+CREATE INDEX idx_user_playlist_files_song_id ON user_playlist_files(song_id);
 CREATE INDEX idx_songs_album_id ON songs(album_id);
 CREATE INDEX idx_albums_artist_id ON albums(artist_id);
 CREATE INDEX idx_song_artists_artist_id ON song_artists(artist_id);

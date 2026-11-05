@@ -8,6 +8,7 @@ from zic.models.album import Album, AlbumCover
 from zic.models.song import Song
 from zic.utils.formatting import format_duration, format_songs_info
 from zic.utils.qt_utils import make_toolbutton, set_label_font_size
+from zic.widgets.add_to_playlist_menu import show_add_to_playlist_menu
 from zic.widgets.cover_thumbnail import DEFAULT_COVER, CoverThumbnail
 from zic.widgets.sound_wave import SoundWave
 
@@ -15,11 +16,15 @@ from zic.widgets.sound_wave import SoundWave
 class SongWidget(QWidget):
     play_song_requested = Signal(Song)
     info_requested = Signal(Song)
+    add_to_playlist_requested = Signal(Song)
 
-    def __init__(self, song: Song, color: str | None) -> None:
+    def __init__(
+        self, song: Song, color: str | None, show_track_number: bool = True
+    ) -> None:
         super().__init__()
         self.song: Song = song
         self.color = color
+        self.show_track_number: bool = show_track_number
 
         # Layouts
         self.main_h_layout = None
@@ -30,6 +35,7 @@ class SongWidget(QWidget):
         self.title_lbl = None
         self.duration_lbl = None
         self.artist_credit_lbl = None
+        self.add_to_playlist_btn = None
         self.info_btn = None
 
         self.init_ui()
@@ -54,11 +60,17 @@ class SongWidget(QWidget):
         self.sound_wave = SoundWave(bars=4, height=30)
         self.title_lbl = QLabel(
             f"{self.song.track_number} - {self.song.title}"
-            if self.song.track_number is not None
+            if self.show_track_number and self.song.track_number is not None
             else self.song.title
         )
         self.duration_lbl = QLabel(format_duration(self.song.duration))
         self.artist_credit_lbl = QLabel(self.song.artist_credit)
+        self.add_to_playlist_btn = make_toolbutton(
+            "icons/plus.png",
+            tooltip="Add to a playlist",
+            icon_size=QSize(10, 10),
+            name="SmallToolButton",
+        )
         self.info_btn = make_toolbutton(
             "icons/info.png",
             tooltip="Info",
@@ -75,11 +87,15 @@ class SongWidget(QWidget):
         self.main_h_layout.addWidget(QLabel("-"))
         self.main_h_layout.addWidget(self.artist_credit_lbl)
         self.main_h_layout.addWidget(QLabel("-"))
+        self.main_h_layout.addWidget(self.add_to_playlist_btn)
         self.main_h_layout.addWidget(self.info_btn)
 
     def set_connections(self) -> None:
         self.play_btn.clicked.connect(lambda: self.play_song_requested.emit(self.song))
         self.info_btn.clicked.connect(lambda: self.info_requested.emit(self.song))
+        self.add_to_playlist_btn.clicked.connect(
+            lambda: self.add_to_playlist_requested.emit(self.song)
+        )
 
     def set_default(self) -> None:
         # Lets the stylesheet paint this plain QWidget subclass (highlight).
@@ -255,6 +271,9 @@ class AlbumView(QWidget):
                 lambda s=song, a=self.album: self.play_song_requested.emit(a, s)
             )
             widget.info_requested.connect(self.show_song_info)
+            widget.add_to_playlist_requested.connect(
+                lambda s: show_add_to_playlist_menu(self.api, s, self)
+            )
             self.songs_v_layout.addWidget(widget)
             self.song_widgets.append(widget)
             self.widget_song_map[song.id] = widget
