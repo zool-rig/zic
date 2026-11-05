@@ -32,6 +32,7 @@ from zic.models.genre import Genre
 from zic.models.playlist import Playlist
 from zic.models.song import Song
 from zic.models.user_playlist import UserPlaylist
+from zic.utils.covers import MOSAIC_TILES, make_cover_mosaic
 from zic.utils.db_utils import (
     InvalidDatabaseError,
     RowFactory,
@@ -736,6 +737,34 @@ class ZicApi:
             (playlist.id,),
         )
         return self._get_songs_by_ids([row[0] for row in cur.fetchall()])
+
+    def get_user_playlist_cover(self, playlist: UserPlaylist) -> bytes | None:
+        """A mosaic of 4 covers of the playlist's albums, picked at random. The
+        pick only depends on the playlist and its albums, so that its image
+        doesn't change at every refresh."""
+        album_ids = [
+            row[0]
+            for row in self.connection.execute(
+                "SELECT DISTINCT covers_thumbnails.album_id "
+                "FROM user_playlist_songs "
+                "JOIN songs ON songs.id = user_playlist_songs.song_id "
+                "JOIN covers_thumbnails ON covers_thumbnails.album_id = songs.album_id "
+                "WHERE user_playlist_songs.playlist_id = ? AND songs.hidden = FALSE "
+                "ORDER BY covers_thumbnails.album_id",
+                (playlist.id,),
+            )
+        ]
+        picked = random.Random(playlist.id).sample(
+            album_ids, min(MOSAIC_TILES, len(album_ids))
+        )
+        thumbnails = [
+            self.connection.execute(
+                "SELECT thumbnail FROM covers_thumbnails WHERE album_id = ?",
+                (album_id,),
+            ).fetchone()[0]
+            for album_id in picked
+        ]
+        return make_cover_mosaic(thumbnails)
 
     def get_user_playlist_queue(
         self,

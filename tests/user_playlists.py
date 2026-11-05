@@ -1,13 +1,17 @@
 """User playlists on the API and widget side (the ingest side is in ingest_scan)."""
 
+import io
 import os
 
 import pytest
+from PIL import Image
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication
 
+from zic.utils.covers import make_cover_mosaic
+from zic.widgets.cover_thumbnail import DEFAULT_COVER
 from zic.widgets.user_playlists_widget import UserPlaylistsWidget
 
 
@@ -96,6 +100,71 @@ def test_empty_playlist_still_plays_something(api):
     assert queue.next() is not None
 
 
+def thumbnail(color):
+    buffer = io.BytesIO()
+    Image.new("RGB", (100, 100), color).save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
+def add_covers(api, colors_by_album):
+    for album_id, color in colors_by_album.items():
+        api.connection.execute(
+            "INSERT INTO covers_thumbnails (album_id, thumbnail, mime_type) "
+            "VALUES (?, ?, 'image/jpeg')",
+            (album_id, thumbnail(color)),
+        )
+
+
+def is_close(pixel, color, tolerance=25):
+    return all(abs(a - b) <= tolerance for a, b in zip(pixel, color, strict=True))
+
+
+RED, GREEN, BLUE, WHITE = (255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 255)
+# The middle of each tile.
+TILES = [(50, 50), (150, 50), (50, 150), (150, 150)]
+
+
+def tiles_of(mosaic):
+    image = Image.open(io.BytesIO(mosaic))
+    assert image.size == (200, 200)
+    return [image.getpixel(tile) for tile in TILES]
+
+
+@pytest.mark.parametrize(
+    ("colors", "expected"),
+    [
+        ([RED], [RED, RED, RED, RED]),
+        ([RED, GREEN], [RED, GREEN, GREEN, RED]),
+        ([RED, GREEN, BLUE], [RED, GREEN, BLUE, RED]),
+        ([RED, GREEN, BLUE, WHITE], [RED, GREEN, BLUE, WHITE]),
+    ],
+)
+def test_mosaic_fills_its_four_tiles(colors, expected):
+    tiles = tiles_of(make_cover_mosaic([thumbnail(c) for c in colors]))
+    assert all(is_close(*pair) for pair in zip(tiles, expected, strict=True))
+
+
+def test_mosaic_ignores_unreadable_covers():
+    assert make_cover_mosaic([]) is None
+    assert make_cover_mosaic([b"not an image"]) is None
+    assert make_cover_mosaic([b"not an image", thumbnail(RED)]) is not None
+
+
+def test_playlist_cover_uses_its_albums_and_stays_the_same(api):
+    # Song 6's album (Talkie Walkie, id 3) isn't in the playlist.
+    add_covers(api, {1: RED, 2: GREEN, 3: BLUE})
+    playlist = add_playlist(api, "Road", [1, 2, 3])
+
+    cover = api.get_user_playlist_cover(playlist)
+
+    assert not any(is_close(tile, BLUE) for tile in tiles_of(cover))
+    assert api.get_user_playlist_cover(playlist) == cover
+
+
+def test_playlist_without_covers_has_no_image(api):
+    assert api.get_user_playlist_cover(add_playlist(api, "Road", [1])) is None
+
+
 # --- widget ------------------------------------------------------------
 
 
@@ -176,3 +245,38 @@ def test_widget_shows_the_playing_song_on_rebuilt_rows(qapp, api):
 
     widget.stop_current_playing_song_display()
     assert widget.song_widgets[1].sound_wave.isHidden()
+
+
+def test_widget_close_hides_the_songs_and_allows_reopening(qapp, api):
+    add_playlist(api, "Road", [3, 1])
+    widget = UserPlaylistsWidget(api)
+    widget.fill()
+    widget.list_widget.setCurrentRow(0)
+
+    widget.close_btn.click()
+
+    assert widget.details_widget.isHidden()
+    assert widget.playlist is None
+    assert widget.song_widgets == {}
+
+    widget.list_widget.setCurrentRow(0)
+
+    assert not widget.details_widget.isHidden()
+    assert list(widget.song_widgets) == [3, 1]
+
+
+def test_widget_shows_the_playlist_image(qapp, api):
+    add_covers(api, {1: RED})
+    add_playlist(api, "Covered", [1])
+    add_playlist(api, "Plain", [3])
+    widget = UserPlaylistsWidget(api)
+    widget.fill()
+
+    assert not widget.list_widget.item(0).icon().isNull()
+    assert not widget.list_widget.item(1).icon().isNull()
+
+    widget.list_widget.setCurrentRow(0)
+    assert widget.cover_thumbnail.bytes != DEFAULT_COVER
+
+    widget.list_widget.setCurrentRow(1)
+    assert widget.cover_thumbnail.bytes == DEFAULT_COVER

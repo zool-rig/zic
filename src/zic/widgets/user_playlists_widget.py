@@ -1,4 +1,5 @@
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -18,6 +19,9 @@ from zic.models.user_playlist import UserPlaylist
 from zic.utils.formatting import format_songs_info, format_songs_total
 from zic.utils.qt_utils import make_toolbutton, set_label_font_size
 from zic.widgets.album_view import SongWidget
+from zic.widgets.cover_thumbnail import DEFAULT_COVER, CoverThumbnail
+
+LIST_ICON_SIZE = QSize(48, 48)
 
 
 class UserPlaylistsWidget(QWidget):
@@ -38,6 +42,7 @@ class UserPlaylistsWidget(QWidget):
         # Layouts
         self.main_v_layout = None
         self.details_v_layout = None
+        self.top_h_layout = None
         self.buttons_h_layout = None
         self.songs_v_layout = None
 
@@ -46,6 +51,8 @@ class UserPlaylistsWidget(QWidget):
         self.splitter = None
         self.list_widget = None
         self.details_widget = None
+        self.close_btn = None
+        self.cover_thumbnail = None
         self.title_lbl = None
         self.songs_info_lbl = None
         self.play_btn = None
@@ -65,6 +72,7 @@ class UserPlaylistsWidget(QWidget):
     def init_layouts(self) -> None:
         self.main_v_layout = QVBoxLayout(self)
         self.details_v_layout = QVBoxLayout()
+        self.top_h_layout = QHBoxLayout()
         self.buttons_h_layout = QHBoxLayout()
         self.songs_v_layout = QVBoxLayout()
 
@@ -77,6 +85,8 @@ class UserPlaylistsWidget(QWidget):
         self.splitter = QSplitter(Qt.Horizontal)
         self.list_widget = QListWidget()
         self.details_widget = QWidget()
+        self.close_btn = make_toolbutton("icons/close.png", tooltip="Close")
+        self.cover_thumbnail = CoverThumbnail(width=200, height=200)
         self.title_lbl = QLabel()
         self.songs_info_lbl = QLabel()
         self.play_btn = make_toolbutton("icons/play.png", tooltip="Play")
@@ -92,6 +102,9 @@ class UserPlaylistsWidget(QWidget):
         self.splitter.addWidget(self.list_widget)
         self.splitter.addWidget(self.details_widget)
         self.details_widget.setLayout(self.details_v_layout)
+        self.details_v_layout.addLayout(self.top_h_layout)
+        self.top_h_layout.addWidget(self.close_btn)
+        self.details_v_layout.addWidget(self.cover_thumbnail, alignment=Qt.AlignHCenter)
         self.details_v_layout.addWidget(self.title_lbl)
         self.details_v_layout.addWidget(self.songs_info_lbl)
         self.details_v_layout.addLayout(self.buttons_h_layout)
@@ -103,6 +116,7 @@ class UserPlaylistsWidget(QWidget):
 
     def set_connections(self) -> None:
         self.list_widget.currentItemChanged.connect(self.on_current_item_changed)
+        self.close_btn.clicked.connect(self.close_details)
         self.play_btn.clicked.connect(
             lambda: self.play_playlist_requested.emit(self.playlist)
         )
@@ -111,7 +125,9 @@ class UserPlaylistsWidget(QWidget):
         )
 
     def set_default(self) -> None:
+        self.top_h_layout.setAlignment(Qt.AlignRight)
         self.buttons_h_layout.setAlignment(Qt.AlignCenter)
+        self.list_widget.setIconSize(LIST_ICON_SIZE)
         self.songs_v_layout.setAlignment(Qt.AlignTop)
         self.title_lbl.setAlignment(Qt.AlignCenter)
         self.songs_info_lbl.setAlignment(Qt.AlignCenter)
@@ -134,11 +150,8 @@ class UserPlaylistsWidget(QWidget):
         self.playlist = None
         self.list_widget.clear()
         for playlist in playlists:
-            item = QListWidgetItem(
-                f"{playlist.name}\n"
-                f"{format_songs_total(playlist.song_count, playlist.duration)}"
-            )
-            item.setData(Qt.UserRole, playlist)
+            item = QListWidgetItem()
+            self.set_item_playlist(item, playlist)
             self.list_widget.addItem(item)
             if playlist.id == selected_id:
                 self.list_widget.setCurrentItem(item)
@@ -147,6 +160,20 @@ class UserPlaylistsWidget(QWidget):
         self.splitter.setVisible(bool(playlists))
         if self.playlist is None:
             self.show_playlist(None)
+
+    def set_item_playlist(self, item: QListWidgetItem, playlist: UserPlaylist) -> None:
+        item.setData(Qt.UserRole, playlist)
+        item.setText(
+            f"{playlist.name}\n"
+            f"{format_songs_total(playlist.song_count, playlist.duration)}"
+        )
+        pixmap = QPixmap()
+        pixmap.loadFromData(self.api.get_user_playlist_cover(playlist) or DEFAULT_COVER)
+        item.setIcon(QIcon(pixmap))
+
+    def close_details(self) -> None:
+        # No current item left, so that selecting this playlist opens it again.
+        self.list_widget.setCurrentRow(-1)
 
     def on_current_item_changed(self, current: QListWidgetItem | None) -> None:
         self.show_playlist(current.data(Qt.UserRole) if current is not None else None)
@@ -159,6 +186,9 @@ class UserPlaylistsWidget(QWidget):
             return
 
         songs = self.api.get_user_playlist_songs(playlist)
+        self.cover_thumbnail.bytes = (
+            self.api.get_user_playlist_cover(playlist) or DEFAULT_COVER
+        )
         self.title_lbl.setText(playlist.name)
         self.songs_info_lbl.setText(format_songs_info(songs))
         for song in songs:
