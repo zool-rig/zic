@@ -4,7 +4,7 @@ PRAGMA foreign_keys = ON;
 
 -- Schema version this file describes: must match len(MIGRATIONS) in
 -- zic.utils.db_utils, bump it along with every new migration.
-PRAGMA user_version = 3;
+PRAGMA user_version = 4;
 
 CREATE TABLE artists (
     id                INTEGER PRIMARY KEY,
@@ -141,10 +141,19 @@ CREATE TABLE IF NOT EXISTS metadata (
     value TEXT
 );
 
--- Playlists made from the folders of the library's _playlists/.
+-- Playlists made in the app, or from the folders of the library's _playlists/.
 CREATE TABLE user_playlists (
     id    INTEGER PRIMARY KEY,
-    name  TEXT NOT NULL UNIQUE               -- name of the folder
+    name  TEXT NOT NULL UNIQUE,
+    folder TEXT                              -- its folder, NULL if made in the app
+);
+
+CREATE UNIQUE INDEX idx_user_playlists_folder ON user_playlists(folder);
+
+-- Folders of playlists deleted in the app: their files are kept, and scans
+-- must not make them come back.
+CREATE TABLE user_playlist_ignored_folders (
+    folder  TEXT PRIMARY KEY
 );
 
 CREATE TABLE user_playlist_songs (
