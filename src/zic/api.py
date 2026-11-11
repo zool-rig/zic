@@ -31,6 +31,8 @@ from zic.models.artist import Artist
 from zic.models.genre import Genre
 from zic.models.playlist import Playlist
 from zic.models.song import Song
+from zic.models.user_playlist import UserPlaylist, UserPlaylistNameError
+from zic.utils.covers import MOSAIC_TILES, make_cover_mosaic
 from zic.utils.db_utils import (
     InvalidDatabaseError,
     RowFactory,
@@ -709,6 +711,187 @@ class ZicApi:
             ),
             lambda exclude_ids: self.get_near_songs_from_album(
                 album, exclude_ids=exclude_ids
+            ),
+            self.fetch_random_songs,
+        )
+
+    def get_user_playlists(self) -> list[UserPlaylist]:
+        """Hidden songs aren't played, so they don't count in the totals."""
+        cur = self.connection.execute(
+            "SELECT user_playlists.id, user_playlists.name, "
+            "COUNT(songs.id), COALESCE(SUM(songs.duration), 0), "
+            "user_playlists.folder "
+            "FROM user_playlists "
+            "LEFT JOIN user_playlist_songs "
+            "ON user_playlist_songs.playlist_id = user_playlists.id "
+            "LEFT JOIN songs "
+            "ON songs.id = user_playlist_songs.song_id AND songs.hidden = FALSE "
+            "GROUP BY user_playlists.id "
+            "ORDER BY user_playlists.name COLLATE NOCASE"
+        )
+        return [UserPlaylist(*row) for row in cur.fetchall()]
+
+    def _get_user_playlist(self, playlist_id: int) -> UserPlaylist:
+        return next(p for p in self.get_user_playlists() if p.id == playlist_id)
+
+    def _check_user_playlist_name(
+        self, name: str, playlist: UserPlaylist | None = None
+    ) -> str:
+        """The name to use, without its surrounding spaces. Changing the case of
+        a playlist's own name is fine."""
+        name = name.strip()
+        if not name:
+            raise UserPlaylistNameError("A playlist needs a name.")
+        if self.connection.execute(
+            "SELECT 1 FROM user_playlists WHERE name = ? COLLATE NOCASE AND id != ?",
+            (name, playlist.id if playlist is not None else -1),
+        ).fetchone():
+            raise UserPlaylistNameError(f"There's already a playlist named '{name}'.")
+        return name
+
+    def create_user_playlist(self, name: str) -> UserPlaylist:
+        name = self._check_user_playlist_name(name)
+        with self.connection:
+            playlist_id = self.connection.execute(
+                "INSERT INTO user_playlists (name) VALUES (?)", (name,)
+            ).lastrowid
+        return self._get_user_playlist(playlist_id)
+
+    def rename_user_playlist(self, playlist: UserPlaylist, name: str) -> UserPlaylist:
+        """Only in the app: its folder, if any, keeps its name."""
+        name = self._check_user_playlist_name(name, playlist)
+        with self.connection:
+            self.connection.execute(
+                "UPDATE user_playlists SET name = ? WHERE id = ?", (name, playlist.id)
+            )
+        return self._get_user_playlist(playlist.id)
+
+    def delete_user_playlist(self, playlist: UserPlaylist) -> None:
+        """Only in the app: songs and files stay. Its folder, if any, is
+        remembered so that it doesn't come back at the next scan."""
+        with self.connection:
+            if playlist.folder is not None:
+                self.connection.execute(
+                    "INSERT OR IGNORE INTO user_playlist_ignored_folders (folder) "
+                    "VALUES (?)",
+                    (playlist.folder,),
+                )
+            self.connection.execute(
+                "DELETE FROM user_playlists WHERE id = ?", (playlist.id,)
+            )
+
+    def get_user_playlist_songs(self, playlist: UserPlaylist) -> list[Song]:
+        cur = self.connection.execute(
+            "SELECT song_id FROM user_playlist_songs "
+            "WHERE playlist_id = ? ORDER BY position",
+            (playlist.id,),
+        )
+        return self._get_songs_by_ids([row[0] for row in cur.fetchall()])
+
+    def get_user_playlist_ids_of_song(self, song: Song) -> set[int]:
+        cur = self.connection.execute(
+            "SELECT playlist_id FROM user_playlist_songs WHERE song_id = ?",
+            (song.id,),
+        )
+        return {row[0] for row in cur.fetchall()}
+
+    def add_song_to_user_playlist(self, playlist: UserPlaylist, song: Song) -> None:
+        """At the end of the playlist. A song is only once in a playlist."""
+        with self.connection:
+            self.connection.execute(
+                "INSERT OR IGNORE INTO user_playlist_songs "
+                "(playlist_id, song_id, position) "
+                "SELECT ?, ?, COALESCE(MAX(position), -1) + 1 "
+                "FROM user_playlist_songs WHERE playlist_id = ?",
+                (playlist.id, song.id, playlist.id),
+            )
+
+    def remove_song_from_user_playlist(
+        self, playlist: UserPlaylist, song: Song
+    ) -> None:
+        """Only from the playlist: its file and the song itself stay."""
+        with self.connection:
+            self.connection.execute(
+                "DELETE FROM user_playlist_songs WHERE playlist_id = ? AND song_id = ?",
+                (playlist.id, song.id),
+            )
+
+    def move_song_in_user_playlist(
+        self, playlist: UserPlaylist, song: Song, offset: int
+    ) -> None:
+        """Swaps it with the song `offset` places away among those displayed:
+        hidden songs don't take a move to get past."""
+        song_ids = [s.id for s in self.get_user_playlist_songs(playlist)]
+        target = song_ids.index(song.id) + offset
+        if not 0 <= target < len(song_ids):
+            return
+        other_id = song_ids[target]
+        positions = dict(
+            self.connection.execute(
+                "SELECT song_id, position FROM user_playlist_songs "
+                "WHERE playlist_id = ? AND song_id IN (?, ?)",
+                (playlist.id, song.id, other_id),
+            ).fetchall()
+        )
+        with self.connection:
+            self.connection.executemany(
+                "UPDATE user_playlist_songs SET position = ? "
+                "WHERE playlist_id = ? AND song_id = ?",
+                (
+                    (positions[other_id], playlist.id, song.id),
+                    (positions[song.id], playlist.id, other_id),
+                ),
+            )
+
+    def get_user_playlist_cover(self, playlist: UserPlaylist) -> bytes | None:
+        """A mosaic of 4 covers of the playlist's albums, picked at random. The
+        pick only depends on the playlist and its albums, so that its image
+        doesn't change at every refresh."""
+        album_ids = [
+            row[0]
+            for row in self.connection.execute(
+                "SELECT DISTINCT covers_thumbnails.album_id "
+                "FROM user_playlist_songs "
+                "JOIN songs ON songs.id = user_playlist_songs.song_id "
+                "JOIN covers_thumbnails ON covers_thumbnails.album_id = songs.album_id "
+                "WHERE user_playlist_songs.playlist_id = ? AND songs.hidden = FALSE "
+                "ORDER BY covers_thumbnails.album_id",
+                (playlist.id,),
+            )
+        ]
+        picked = random.Random(playlist.id).sample(
+            album_ids, min(MOSAIC_TILES, len(album_ids))
+        )
+        thumbnails = [
+            self.connection.execute(
+                "SELECT thumbnail FROM covers_thumbnails WHERE album_id = ?",
+                (album_id,),
+            ).fetchone()[0]
+            for album_id in picked
+        ]
+        return make_cover_mosaic(thumbnails)
+
+    def get_user_playlist_queue(
+        self,
+        playlist: UserPlaylist,
+        song: Song | None = None,
+        shuffle: bool = False,
+    ) -> Playlist:
+        """The playlist's songs (from `song` if given), then the near genres of
+        the last one, then a random selection. Random only if there's no song to
+        play in the playlist, as starting a playlist always plays something."""
+        songs = self.get_user_playlist_songs(playlist)
+        if shuffle:
+            random.shuffle(songs)
+        if song is not None:
+            start = next((i for i, s in enumerate(songs) if s.id == song.id), 0)
+            songs = songs[start:]
+        if not songs:
+            return Playlist(self.fetch_random_songs)
+        return Playlist(
+            lambda *_: songs,
+            lambda exclude_ids: self.get_near_songs_from_album(
+                songs[-1].album, exclude_ids=exclude_ids
             ),
             self.fetch_random_songs,
         )
