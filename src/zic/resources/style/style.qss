@@ -205,21 +205,30 @@ SongWidget[highlighted="true"] {
     border-radius: 8px;
 }
 
+/* Sizes are explicit: otherwise the native style decides, and Windows' fills
+   the whole height of the slider with its groove. */
+QSlider::groove:horizontal {
+    height: 4px;
+    border-radius: 2px;
+    background-color: #151B24;
+}
+
 QSlider::sub-page:horizontal {
     background-color: #35F0E0;
-    margin: 1px;
     border-radius: 2px;
 }
 
 QSlider::add-page:horizontal {
     background-color: #151B24;
-    margin: 1px;
-    border-radius: 1px;
+    border-radius: 2px;
 }
 
+/* 12px + its border, centered on the groove by the negative margin. */
 QSlider::handle:horizontal {
+    width: 12px;
+    margin: -5px 0;
     background-color: #35F0E0;
-    border-radius: 6px;
+    border-radius: 7px;
     border: 1px solid #2A3342;
 }
 
