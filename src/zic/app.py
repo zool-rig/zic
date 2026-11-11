@@ -4,6 +4,7 @@ from PySide6.QtCore import QEvent, QObject, QSize, Qt, QTimer
 from PySide6.QtGui import QIcon, QKeyEvent
 from PySide6.QtWidgets import (
     QApplication,
+    QButtonGroup,
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -68,6 +69,7 @@ class ZicUI(QDialog):
         self.random_btn_h_layout = None
         self.reload_btn_h_layout = None
         self.filter_tab_v_layout = None
+        self.view_tab_v_layout = None
 
         # Widgets
         self.menu_bar = None
@@ -76,7 +78,10 @@ class ZicUI(QDialog):
         self.filter_tab_frame = None
         self.toggle_artists_btn = None
         self.toggle_genres_btn = None
-        self.toggle_playlists_btn = None
+        self.view_tab_frame = None
+        self.albums_view_btn = None
+        self.playlists_view_btn = None
+        self.view_btn_group = None
         self.h_splitter = None
         self.filter_stacked_widget = None
         self.artist_filter_widget = None
@@ -123,6 +128,7 @@ class ZicUI(QDialog):
         self.random_btn_h_layout = QHBoxLayout()
         self.reload_btn_h_layout = QHBoxLayout()
         self.filter_tab_v_layout = QVBoxLayout()
+        self.view_tab_v_layout = QVBoxLayout()
 
     def init_widgets(self) -> None:
         self.menu_bar = QMenuBar()
@@ -137,9 +143,17 @@ class ZicUI(QDialog):
         self.toggle_genres_btn = make_toolbutton(
             "icons/tag.png", tooltip="Toggle genres view", checkable=True
         )
-        self.toggle_playlists_btn = make_toolbutton(
-            "icons/music.png", tooltip="Toggle playlists view", checkable=True
+        self.view_tab_frame = named_widget(QFrame, "ContainerFrame")
+        self.albums_view_btn = make_toolbutton(
+            "icons/album.png", tooltip="Albums", checkable=True
         )
+        self.playlists_view_btn = make_toolbutton(
+            "icons/playlist.png", tooltip="Playlists", checkable=True
+        )
+        # One of the two views is always shown.
+        self.view_btn_group = QButtonGroup(self)
+        self.view_btn_group.addButton(self.albums_view_btn)
+        self.view_btn_group.addButton(self.playlists_view_btn)
         self.h_splitter = QSplitter(Qt.Horizontal)
         self.filter_stacked_widget = QStackedWidget()
         self.artist_filter_widget = ArtistsFilterWidget(self)
@@ -211,9 +225,10 @@ class ZicUI(QDialog):
         self.filter_tab_v_layout.addWidget(self.toggle_artists_btn)
         self.filter_tab_v_layout.addWidget(self.toggle_genres_btn)
         self.side_bar_v_layout.addWidget(HRule())
-        self.side_bar_v_layout.addWidget(
-            self.toggle_playlists_btn, alignment=Qt.AlignHCenter
-        )
+        self.side_bar_v_layout.addWidget(self.view_tab_frame)
+        self.view_tab_frame.setLayout(self.view_tab_v_layout)
+        self.view_tab_v_layout.addWidget(self.albums_view_btn)
+        self.view_tab_v_layout.addWidget(self.playlists_view_btn)
         self.main_h_layout.addWidget(VRule())
         self.main_h_layout.addWidget(self.h_splitter)
         self.h_splitter.addWidget(self.filter_stacked_widget)
@@ -233,7 +248,7 @@ class ZicUI(QDialog):
         self.toggle_genres_btn.clicked.connect(
             lambda: self.on_filter_toggled(self.toggle_genres_btn)
         )
-        self.toggle_playlists_btn.clicked.connect(self.on_playlists_toggled)
+        self.playlists_view_btn.toggled.connect(self.on_playlists_toggled)
         self.user_playlists_widget.play_playlist_requested.connect(
             self.play_user_playlist
         )
@@ -272,12 +287,14 @@ class ZicUI(QDialog):
             (self.side_bar_v_layout, Qt.AlignTop),
             (self.random_btn_h_layout, Qt.AlignCenter),
             (self.filter_tab_v_layout, Qt.AlignTop),
+            (self.view_tab_v_layout, Qt.AlignTop),
         ):
             layout.setAlignment(alignment)
 
         # Don't align main_v_layout to top; let it expand to fill available space
         self.main_v_layout.setStretchFactor(self.main_h_layout, 1)
 
+        self.albums_view_btn.setChecked(True)
         self.filter_stacked_widget.hide()
         self.album_view.hide()
         self.h_splitter.setStretchFactor(0, 1)
@@ -316,9 +333,7 @@ class ZicUI(QDialog):
 
     def show_albums_page(self) -> None:
         """For what can only be shown along with the albums."""
-        if self.toggle_playlists_btn.isChecked():
-            self.toggle_playlists_btn.setChecked(False)
-            self.on_playlists_toggled(False)
+        self.albums_view_btn.setChecked(True)
 
     def on_filter_toggled(self, button: QToolButton) -> None:
         self.show_albums_page()
@@ -352,7 +367,7 @@ class ZicUI(QDialog):
 
         # Clear and refill album explorer
         self.album_explorer.fill()
-        if self.toggle_playlists_btn.isChecked():
+        if self.playlists_view_btn.isChecked():
             self.user_playlists_widget.fill()
 
         # Clear artist and genre filters

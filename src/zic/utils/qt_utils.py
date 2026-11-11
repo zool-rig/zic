@@ -13,6 +13,48 @@ from PySide6.QtWidgets import (
 
 from zic.resources import get_resource
 
+# Color of the icons on the accent background of what's checked or selected,
+# like the text of the selected items of lists in style.qss.
+CHECKED_ICON_COLOR = "#151B24"
+
+
+def with_checked_variant(icon: QIcon) -> QIcon:
+    """The icon, plus a dark version of it for when its button is checked:
+    the light icons can't be seen on the accent background."""
+    pixmap = icon.pixmap(QSize(256, 256))
+    if pixmap.isNull():
+        return icon
+
+    checked = QPixmap(pixmap.size())
+    checked.setDevicePixelRatio(pixmap.devicePixelRatio())
+    checked.fill(Qt.transparent)
+    painter = QPainter(checked)
+    painter.drawPixmap(0, 0, pixmap)
+    painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+    painter.fillRect(checked.rect(), QColor(CHECKED_ICON_COLOR))
+    painter.end()
+
+    result = QIcon()
+    for mode in (QIcon.Normal, QIcon.Active):
+        result.addPixmap(pixmap, mode, QIcon.Off)
+        result.addPixmap(checked, mode, QIcon.On)
+    # Disabled buttons lose the accent background: their light icon stays.
+    result.addPixmap(
+        QApplication.style().generatedIconPixmap(
+            QIcon.Disabled, pixmap, QStyleOption()
+        ),
+        QIcon.Disabled,
+        QIcon.On,
+    )
+    return result
+
+
+class CheckableToolButton(QToolButton):
+    """Keeps a dark icon when checked, including when its icon changes."""
+
+    def setIcon(self, icon: QIcon) -> None:
+        super().setIcon(with_checked_variant(icon))
+
 
 def make_toolbutton(
     icon_name: str,
@@ -21,7 +63,7 @@ def make_toolbutton(
     name: str | None = None,
     icon_size: QSize | None = None,
 ) -> QToolButton:
-    button = QToolButton()
+    button = CheckableToolButton() if checkable else QToolButton()
     icon_path = get_resource(icon_name)
     button.setIcon(QIcon(icon_path))
 
@@ -33,13 +75,6 @@ def make_toolbutton(
 
     if checkable:
         button.setCheckable(checkable)
-        # black_icon_path = get_resource(icon_name.replace(".", "-black."))
-        # if black_icon_path and os.path.exists(black_icon_path):
-
-        #     def toggle_icon(state: bool) -> None:
-        #         button.setIcon(QIcon(black_icon_path if state else icon_path))
-
-        #     button.toggled.connect(toggle_icon)
 
     if name:
         button.setObjectName(name)

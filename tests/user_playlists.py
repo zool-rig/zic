@@ -1,3 +1,5 @@
+from collections import Counter
+
 """User playlists on the API and widget side (the ingest side is in ingest_scan)."""
 
 import io
@@ -8,12 +10,16 @@ from PIL import Image
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import QSize
+from PySide6.QtGui import QIcon
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLineEdit
 
-from zic.app import GlobalKeyFilter
+from zic.app import GlobalKeyFilter, ZicUI
 from zic.models.user_playlist import UserPlaylistNameError
+from zic.resources import get_resource
 from zic.utils.covers import make_cover_mosaic
+from zic.utils.qt_utils import CHECKED_ICON_COLOR, make_toolbutton
 from zic.widgets.add_to_playlist_menu import (
     build_add_to_playlist_menu,
     show_add_to_playlist_menu,
@@ -701,3 +707,114 @@ def test_text_fields_keep_their_spaces_despite_the_global_hotkeys(qapp):
 
     assert field.text() == "road trip"
     assert fake_app.pressed == []
+
+
+# --- Views of the side bar ----------------------------------------------
+
+
+@pytest.fixture
+def window(qapp, library_db_path, tmp_path, app_paths, monkeypatch):
+    from zic.config import AppConfig
+
+    app_config = AppConfig(db_path=library_db_path, root_dir=tmp_path)
+    monkeypatch.setattr("zic.api.get_app_config", lambda: app_config)
+    monkeypatch.setattr("zic.widgets.album_explorer.get_app_config", lambda: app_config)
+    ui = ZicUI()
+    ui.show()
+    yield ui
+    ui.close()
+
+
+def test_the_albums_view_is_the_one_checked_at_start(window):
+    assert window.albums_view_btn.isChecked()
+    assert not window.playlists_view_btn.isChecked()
+    assert window.library_stack.currentWidget() is window.album_explorer
+
+
+def test_the_view_buttons_switch_between_the_two_views(window):
+    window.playlists_view_btn.click()
+
+    assert not window.albums_view_btn.isChecked()
+    assert window.library_stack.currentWidget() is window.user_playlists_widget
+
+    window.albums_view_btn.click()
+
+    assert not window.playlists_view_btn.isChecked()
+    assert window.library_stack.currentWidget() is window.album_explorer
+
+
+def test_clicking_the_current_view_button_keeps_it_checked(window):
+    window.albums_view_btn.click()
+    assert window.albums_view_btn.isChecked()
+
+    window.playlists_view_btn.click()
+    window.playlists_view_btn.click()
+
+    assert window.playlists_view_btn.isChecked()
+    assert window.library_stack.currentWidget() is window.user_playlists_widget
+
+
+def test_coming_back_to_the_albums_restores_the_album_view(window):
+    window.album_view.show()
+
+    window.playlists_view_btn.click()
+    # Must not make it forget that the album view was shown.
+    window.playlists_view_btn.click()
+    assert window.album_view.isHidden()
+
+    window.albums_view_btn.click()
+
+    assert not window.album_view.isHidden()
+
+
+def test_a_filter_button_comes_back_to_the_albums_view(window):
+    window.playlists_view_btn.click()
+
+    window.toggle_artists_btn.click()
+
+    assert window.albums_view_btn.isChecked()
+    assert not window.playlists_view_btn.isChecked()
+    assert window.library_stack.currentWidget() is window.album_explorer
+    assert not window.filter_stacked_widget.isHidden()
+
+
+def dominant_icon_color(button):
+    image = (
+        button.icon()
+        .pixmap(
+            QSize(32, 32), QIcon.Normal, QIcon.On if button.isChecked() else QIcon.Off
+        )
+        .toImage()
+    )
+    colors = Counter(
+        image.pixelColor(x, y).name()
+        for x in range(image.width())
+        for y in range(image.height())
+        if image.pixelColor(x, y).alpha() == 255
+    )
+    assert colors
+    return colors.most_common(1)[0][0]
+
+
+def test_checked_buttons_have_a_dark_icon_even_after_a_new_icon(qapp):
+    button = make_toolbutton("icons/play.png", checkable=True)
+    assert dominant_icon_color(button) == "#e6e9ee"
+
+    button.setChecked(True)
+    assert dominant_icon_color(button) == CHECKED_ICON_COLOR.lower()
+
+    button.setIcon(QIcon(get_resource("icons/pause.png")))
+    assert dominant_icon_color(button) == CHECKED_ICON_COLOR.lower()
+
+
+def test_disabled_checked_buttons_keep_a_light_icon(qapp):
+    # A dark icon couldn't be seen on the dark background of disabled buttons.
+    button = make_toolbutton("icons/mute.png", checkable=True)
+    button.setChecked(True)
+
+    image = button.icon().pixmap(QSize(32, 32), QIcon.Disabled, QIcon.On).toImage()
+
+    assert (
+        max(image.pixelColor(x, y).lightness() for x in range(32) for y in range(32))
+        > 150
+    )
